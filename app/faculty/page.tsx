@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-// UPDATED: Import Upload and Modal
-import { Plus, Edit, Trash2, UserCircle, Award, Upload } from 'lucide-react';
+import { Plus, Edit, Trash2, UserCircle, Award, Upload, Loader2 } from 'lucide-react';
 import { useTimetableStore } from '@/lib/store';
 import { Faculty } from '@/lib/types';
 import toast from 'react-hot-toast';
@@ -11,12 +10,21 @@ import { Modal } from '@/components/ui/Modal';
 import { ImportFaculty } from '@/components/ImportFaculty';
 
 export default function FacultyPage() {
-  const { faculty, subjects, addFaculty, updateFaculty, deleteFaculty } = useTimetableStore();
+  const { 
+    faculty, 
+    subjects, 
+    addFaculty, 
+    updateFaculty, 
+    deleteFaculty,
+    fetchInitialData,
+    isInitialized,
+    isLoading
+  } = useTimetableStore();
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
-
-  // NEW: State for import modal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -26,30 +34,43 @@ export default function FacultyPage() {
     subjects: [] as string[],
   });
 
+  // --- NEW: Fetch data on component mount ---
+  useEffect(() => {
+    if (!isInitialized) {
+      fetchInitialData();
+    }
+  }, [isInitialized, fetchInitialData]);
+  // ------------------------------------------
+
   const designations = ['Professor', 'Associate Professor', 'Assistant Professor', 'Lecturer', 'TA'];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
-    const facultyData: Faculty = {
-      id: editingFaculty?.id || `faculty-${Date.now()}`,
+    const facultyData: Omit<Faculty, 'id' | 'currentWorkload'> = {
       name: formData.name,
       initials: formData.initials,
       designation: formData.designation,
       maxWorkload: Number(formData.maxWorkload),
-      currentWorkload: editingFaculty?.currentWorkload || 0,
       subjects: formData.subjects,
       preferences: {},
     };
 
     if (editingFaculty) {
-      updateFaculty(editingFaculty.id, facultyData);
-      toast.success('Faculty updated successfully!');
+      // Create payload for update
+      const updatePayload: Partial<Faculty> = {
+        ...facultyData,
+        // Preserve existing workload when editing
+        currentWorkload: editingFaculty.currentWorkload || 0, 
+      };
+      await updateFaculty(editingFaculty.id, updatePayload);
     } else {
-      addFaculty(facultyData);
-      toast.success('Faculty added successfully!');
+      // Add new faculty (currentWorkload will be set to 0 by API)
+      await addFaculty(facultyData);
     }
 
+    setIsSubmitting(false);
     resetForm();
   };
 
@@ -72,15 +93,14 @@ export default function FacultyPage() {
       initials: faculty.initials,
       designation: faculty.designation,
       maxWorkload: faculty.maxWorkload,
-      subjects: faculty.subjects,
+      subjects: faculty.subjects || [], // Ensure subjects is an array
     });
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this faculty member?')) {
-      deleteFaculty(id);
-      toast.success('Faculty deleted successfully!');
+      await deleteFaculty(id);
     }
   };
 
@@ -93,6 +113,14 @@ export default function FacultyPage() {
     }));
   };
 
+  if (!isInitialized && isLoading) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <Loader2 className="w-12 h-12 text-primary-400 animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -100,7 +128,6 @@ export default function FacultyPage() {
           <h1 className="text-4xl font-bold text-white mb-2">Faculty Management</h1>
           <p className="text-gray-400">Manage faculty members and their workload</p>
         </div>
-        {/* UPDATED: Added Import Button */}
         <div className="flex gap-4">
           <motion.button
             className="btn-secondary flex items-center space-x-2"
@@ -113,7 +140,7 @@ export default function FacultyPage() {
           </motion.button>
           <motion.button
             className="btn-primary flex items-center space-x-2"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setEditingFaculty(null); setIsModalOpen(true); }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -125,7 +152,7 @@ export default function FacultyPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* ... (stats cards remain the same) ... */}
+        {/* ... (Your stats JSX remains unchanged) ... */}
         <div className="card">
           <div className="text-primary-400 text-sm font-medium mb-1">Total Faculty</div>
           <div className="text-3xl font-bold text-white">{faculty.length}</div>
@@ -165,7 +192,8 @@ export default function FacultyPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
             >
-              <div className="flex items-start justify-between mb-4">
+              {/* ... (Your card layout JSX remains unchanged) ... */}
+               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center space-x-3">
                   <div className="w-12 h-12 bg-primary-500/20 rounded-full flex items-center justify-center">
                     <UserCircle className="w-7 h-7 text-primary-400" />
@@ -198,15 +226,15 @@ export default function FacultyPage() {
                           ? 'bg-yellow-500'
                           : 'bg-green-500'
                       }`}
-                      style={{ width: `${Math.min(workloadPercentage, 100)}%` }}
+                      style={{ width: `${Math.min(workloadPercentage || 0, 100)}%` }}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-sm text-gray-400">Subjects ({member.subjects.length})</span>
+                  <span className="text-sm text-gray-400">Subjects ({member.subjects?.length || 0})</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {member.subjects.slice(0, 3).map(subjectId => {
+                    {(member.subjects || []).slice(0, 3).map(subjectId => {
                       const subject = subjects.find(s => s.id === subjectId);
                       return subject ? (
                         <span key={subjectId} className="px-2 py-0.5 bg-primary-500/10 text-primary-400 rounded text-xs">
@@ -214,9 +242,9 @@ export default function FacultyPage() {
                         </span>
                       ) : null;
                     })}
-                    {member.subjects.length > 3 && (
+                    {(member.subjects?.length || 0) > 3 && (
                       <span className="px-2 py-0.5 bg-white/10 text-gray-400 rounded text-xs">
-                        +{member.subjects.length - 3}
+                        +{(member.subjects?.length || 0) - 3}
                       </span>
                     )}
                   </div>
@@ -244,13 +272,13 @@ export default function FacultyPage() {
         })}
       </div>
 
-      {faculty.length === 0 && (
+      {faculty.length === 0 && !isLoading && (
         <div className="card text-center py-12">
           {/* ... (no data message) ... */}
         </div>
       )}
 
-      {/* UPDATED: Add/Edit Modal (now uses Modal component) */}
+      {/* Add/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={resetForm}
@@ -258,7 +286,8 @@ export default function FacultyPage() {
         size="xl"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* ... (Your form fields JSX remains unchanged) ... */}
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="label">Full Name *</label>
               <input
@@ -342,13 +371,22 @@ export default function FacultyPage() {
           </div>
 
           <div className="flex space-x-3 pt-4">
-            <button type="submit" className="btn-primary flex-1">
-              {editingFaculty ? 'Update Faculty' : 'Add Faculty'}
+            <button 
+              type="submit" 
+              className="btn-primary flex-1"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                editingFaculty ? 'Update Faculty' : 'Add Faculty'
+              )}
             </button>
             <button
               type="button"
               onClick={resetForm}
               className="btn-secondary flex-1"
+              disabled={isSubmitting}
             >
               Cancel
             </button>
@@ -356,7 +394,7 @@ export default function FacultyPage() {
         </form>
       </Modal>
 
-      {/* NEW: Import Faculty Modal */}
+      {/* Import Faculty Modal */}
       <Modal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}

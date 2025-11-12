@@ -39,7 +39,8 @@ interface ImportSubjectsProps {
 }
 
 export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
-  const { addSubject } = useTimetableStore();
+  // Get the full store state, not just addSubject
+  const store = useTimetableStore(); 
   const [file, setFile] = useState<File | null>(null);
   const [semesterType, setSemesterType] = useState<SemesterType>('ODD');
   const [isImporting, setIsImporting] = useState(false);
@@ -66,10 +67,9 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         try {
-          let importedCount = 0;
-          const newSubjects: Subject[] = [];
+          const newSubjects: Omit<Subject, 'id'>[] = []; // We don't have IDs yet
 
           for (const row of results.data as any[]) {
             const semester = (row['Semester'] || '').trim();
@@ -77,10 +77,10 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
               
               const subjectType = inferSubjectType(row);
               
-              const newSubject: Subject = {
-                id: `subject-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              const newSubject: Omit<Subject, 'id'> = {
+                // No ID here
                 name: row['Course Name'],
-                code: generateCode(row['Course Name']), // Auto-generate a code
+                code: generateCode(row['Course Name']), 
                 department: row['Department'],
                 year: row['Year'],
                 semester: semester,
@@ -97,12 +97,33 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
               }
             }
           }
+
+          if (newSubjects.length === 0) {
+            toast.error('No valid subjects found to import for the selected semester.', { id: 'import' });
+            setIsImporting(false);
+            return;
+          }
+
+          // --- NEW: Call the batch-import API ---
+          const response = await fetch('/api/subjects/batch-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newSubjects),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save subjects to database');
+          }
+
+          const { importedSubjects } = await response.json();
           
-          // Add all new subjects to the store at once
-          newSubjects.forEach(subject => addSubject(subject));
+          // --- NEW: Update the local store state with the new data from DB ---
+          store.setState((state) => ({
+            subjects: [...state.subjects, ...importedSubjects],
+          }));
           
           setIsImporting(false);
-          toast.success(`Successfully imported ${newSubjects.length} subjects!`, { id: 'import' });
+          toast.success(`Successfully imported ${importedSubjects.length} subjects!`, { id: 'import' });
           onClose();
 
         } catch (error: any) {
@@ -119,7 +140,7 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
 
   return (
     <div className="space-y-6">
-      {/* Semester Type Selector */}
+      {/* ... (Your JSX for semester selector and file upload remains unchanged) ... */}
       <div>
         <label className="label">Select Semester Type to Import</label>
         <div className="flex gap-4">
@@ -150,7 +171,6 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
         </div>
       </div>
 
-      {/* File Upload */}
       <div>
         <label className="label">Upload Course Structure CSV</label>
         <label
@@ -174,7 +194,6 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
         </label>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex space-x-3 pt-4">
         <button
           type="button"

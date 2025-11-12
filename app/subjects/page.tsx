@@ -1,71 +1,89 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Import useEffect
 import { motion } from 'framer-motion';
-// UPDATED: Import Upload icon and Modal
-import { Plus, Edit, Trash2, BookOpen, Upload } from 'lucide-react';
+import { Plus, Edit, Trash2, BookOpen, Upload, Loader2 } from 'lucide-react'; // Import Loader2
 import { useTimetableStore } from '@/lib/store';
 import { Subject, SubjectType } from '@/lib/types';
 import toast from 'react-hot-toast';
-import { Modal } from '@/components/ui/Modal'; // Import Modal
-import { ImportSubjects } from '@/components/ImportSubjects'; // Import new component
+import { Modal } from '@/components/ui/Modal'; 
+import { ImportSubjects } from '@/components/ImportSubjects'; 
 
 export default function SubjectsPage() {
-  const { subjects, addSubject, updateSubject, deleteSubject } = useTimetableStore();
+  // Use the new state properties from the store
+  const { 
+    subjects, 
+    addSubject, 
+    updateSubject, 
+    deleteSubject,
+    fetchInitialData, // Get the new fetcher
+    isInitialized,    // Check if data is loaded
+    isLoading        // Check loading state
+  } = useTimetableStore();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
-  
-  // NEW: State for the import modal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  
+  // Add a new loading state for form submission
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
     code: '',
     department: '',
     year: '',
-    semester: '', // Added semester
+    semester: '', 
     theoryHours: 0,
     practicalHours: 0,
-    tutorialHours: 0, // Added tutorial
+    tutorialHours: 0, 
     type: 'CORE' as SubjectType,
     electives: '',
   });
 
+  // --- NEW: Fetch data on component mount ---
+  useEffect(() => {
+    if (!isInitialized) {
+      fetchInitialData();
+    }
+  }, [isInitialized, fetchInitialData]);
+  // ------------------------------------------
+
   const departments = ['CE', 'IT', 'MECH', 'EE', 'CIVIL'];
   const years = ['FE', 'SE', 'TE', 'BE'];
   const subjectTypes: SubjectType[] = ['CORE', 'LAB', 'DLO', 'ILO', 'MINOR'];
-  // NEW: Semesters list for the form
   const semesters = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true); // Set loading state
     
     const electivesArray = formData.electives
       ? formData.electives.split(',').map(e => e.trim())
       : undefined;
 
-    const subjectData: Subject = {
-      id: editingSubject?.id || `subject-${Date.now()}`,
+    // We no longer create an ID, Firestore will do that.
+    const subjectData: Omit<Subject, 'id'> = { 
       name: formData.name,
       code: formData.code,
       department: formData.department,
       year: formData.year,
-      semester: formData.semester, // Added
+      semester: formData.semester, 
       theoryHours: Number(formData.theoryHours),
       practicalHours: Number(formData.practicalHours),
-      tutorialHours: Number(formData.tutorialHours), // Added
+      tutorialHours: Number(formData.tutorialHours), 
       type: formData.type,
       electives: (formData.type === 'DLO' || formData.type === 'ILO' || formData.type === 'MINOR') ? electivesArray : undefined,
     };
 
     if (editingSubject) {
-      updateSubject(editingSubject.id, subjectData);
-      toast.success('Subject updated successfully!');
+      // Pass only the data, not the ID
+      await updateSubject(editingSubject.id, subjectData); 
     } else {
-      addSubject(subjectData);
-      toast.success('Subject added successfully!');
+      await addSubject(subjectData);
     }
-
+    
+    setIsSubmitting(false); // Clear loading state
     resetForm();
   };
 
@@ -75,10 +93,10 @@ export default function SubjectsPage() {
       code: '',
       department: '',
       year: '',
-      semester: '', // Added
+      semester: '', 
       theoryHours: 0,
       practicalHours: 0,
-      tutorialHours: 0, // Added
+      tutorialHours: 0, 
       type: 'CORE',
       electives: '',
     });
@@ -93,31 +111,41 @@ export default function SubjectsPage() {
       code: subject.code,
       department: subject.department,
       year: subject.year,
-      semester: subject.semester, // Added
+      semester: subject.semester, 
       theoryHours: subject.theoryHours,
       practicalHours: subject.practicalHours,
-      tutorialHours: subject.tutorialHours, // Added
+      tutorialHours: subject.tutorialHours, 
       type: subject.type,
       electives: subject.electives?.join(', ') || '',
     });
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this subject?')) {
-      deleteSubject(id);
-      toast.success('Subject deleted successfully!');
+      // This is now an async call
+      await deleteSubject(id); 
     }
   };
 
+  // --- NEW: Show loading spinner ---
+  if (!isInitialized && isLoading) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <Loader2 className="w-12 h-12 text-primary-400 animate-spin" />
+      </div>
+    );
+  }
+  // ---------------------------------
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* ... (Your header and stats cards JSX remains unchanged) ... */}
+       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-white mb-2">Subject Management</h1>
           <p className="text-gray-400">Manage subjects with theory and practical hours</p>
         </div>
-        {/* UPDATED: Added Import Button */}
         <div className="flex gap-4">
           <motion.button
             className="btn-secondary flex items-center space-x-2"
@@ -140,9 +168,7 @@ export default function SubjectsPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* ... (stats cards remain the same) ... */}
          <div className="card">
           <div className="text-primary-400 text-sm font-medium mb-1">Total Subjects</div>
           <div className="text-3xl font-bold text-white">{subjects.length}</div>
@@ -171,12 +197,13 @@ export default function SubjectsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {subjects.map((subject, index) => (
           <motion.div
-            key={subject.id}
+            key={subject.id} // Use the Firestore ID
             className="card group hover:border-primary-500/50"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05 }}
           >
+            {/* ... (Your card layout JSX remains unchanged) ... */}
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 bg-primary-500/20 rounded-lg flex items-center justify-center">
@@ -246,7 +273,7 @@ export default function SubjectsPage() {
         ))}
       </div>
 
-      {subjects.length === 0 && (
+      {subjects.length === 0 && !isLoading && (
         <div className="card text-center py-12">
           {/* ... (no data message) ... */}
         </div>
@@ -261,6 +288,7 @@ export default function SubjectsPage() {
           size="xl"
         >
           <form onSubmit={handleSubmit} className="space-y-4">
+             {/* ... (Your form fields JSX remains unchanged) ... */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label">Subject Name *</label>
@@ -403,13 +431,22 @@ export default function SubjectsPage() {
             )}
 
             <div className="flex space-x-3 pt-4">
-              <button type="submit" className="btn-primary flex-1">
-                {editingSubject ? 'Update Subject' : 'Add Subject'}
+              <button 
+                type="submit" 
+                className="btn-primary flex-1"
+                disabled={isSubmitting} // Disable button when submitting
+              >
+                {isSubmitting ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  editingSubject ? 'Update Subject' : 'Add Subject'
+                )}
               </button>
               <button
                 type="button"
                 onClick={resetForm}
                 className="btn-secondary flex-1"
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
@@ -418,14 +455,17 @@ export default function SubjectsPage() {
         </Modal>
       )}
 
-      {/* NEW: Import Subjects Modal */}
+      {/* Import Subjects Modal */}
       <Modal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         title="Import Subjects from CSV"
         size="lg"
       >
-        <ImportSubjects onClose={() => setIsImportModalOpen(false)} />
+        {/* Pass the setSubjects function from the store */}
+        <ImportSubjects 
+          onClose={() => setIsImportModalOpen(false)} 
+        />
       </Modal>
     </div>
   );

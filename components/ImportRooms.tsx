@@ -11,8 +11,16 @@ interface ImportRoomsProps {
   onClose: () => void;
 }
 
+// This interface matches a row in your Room_Allocation_Structure.csv
+interface RoomCSVRow {
+  RoomNumber: string;
+  Category: string;
+  Capacity: string;
+  Department?: string; // Department is optional
+}
+
 export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
-  const { addRoom } = useTimetableStore();
+  const store = useTimetableStore();
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -34,19 +42,18 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         try {
-          const newRooms: Room[] = [];
+          const newRooms: Omit<Room, 'id'>[] = [];
 
-          for (const row of results.data as any[]) {
+          for (const row of results.data as RoomCSVRow[]) {
             const category = (row['Category'] || '').trim().toUpperCase();
             if (category !== 'CLASSROOM' && category !== 'LAB') {
               console.warn('Skipping invalid row, category must be CLASSROOM or LAB:', row);
               continue; // Skip invalid row
             }
 
-            const newRoom: Room = {
-              id: `room-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            const newRoom: Omit<Room, 'id'> = {
               roomNumber: (row['RoomNumber'] || '').trim(),
               category: category as 'CLASSROOM' | 'LAB',
               capacity: Number(row['Capacity']) || (category === 'LAB' ? 20 : 60), // Default capacity
@@ -59,11 +66,32 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
             }
           }
           
-          // Add all new rooms to the store
-          newRooms.forEach(room => addRoom(room));
+          if (newRooms.length === 0) {
+            toast.error('No valid rooms found to import.', { id: 'import-room' });
+            setIsImporting(false);
+            return;
+          }
           
+          // --- NEW: Call the batch-import API ---
+          const response = await fetch('/api/rooms/batch-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newRooms),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save rooms to database');
+          }
+
+          const { importedRooms } = await response.json();
+          
+          // --- NEW: Update the local store state ---
+          store.setState((state) => ({
+            rooms: [...state.rooms, ...importedRooms],
+          }));
+
           setIsImporting(false);
-          toast.success(`Successfully imported ${newRooms.length} rooms!`, { id: 'import-room' });
+          toast.success(`Successfully imported ${importedRooms.length} rooms!`, { id: 'import-room' });
           onClose();
 
         } catch (error: any) {
@@ -93,7 +121,7 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
           </span>
           <p className="text-xs text-gray-500 mt-1">
             Columns: 'RoomNumber', 'Category', 'Capacity', 'Department' (optional)
-          </p>
+          </D>
           <input
             id="file-upload-room"
             type="file"

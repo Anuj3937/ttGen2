@@ -2,25 +2,31 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-// UPDATED: Added Upload icon
-import { Plus, Edit, Trash2, Users, UserPlus, ClipboardList, X, Upload } from 'lucide-react';
+import { Plus, Edit, Trash2, Users, UserPlus, ClipboardList, X, Upload, Loader2 } from 'lucide-react';
 import { useTimetableStore } from '@/lib/store';
 import { Division, Batch, Subject } from '@/lib/types';
 import toast from 'react-hot-toast';
-// UPDATED: Import Modal and new ImportDivisions component
 import { Modal } from '@/components/ui/Modal';
 import { ImportDivisions } from '@/components/ImportDivisions';
 
 export default function DivisionsPage() {
-  const { divisions, addDivision, updateDivision, deleteDivision, subjects } = useTimetableStore();
+  const { 
+    divisions, 
+    addDivision, 
+    updateDivision, 
+    deleteDivision, 
+    subjects,
+    fetchInitialData,
+    isInitialized,
+    isLoading
+  } = useTimetableStore();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDivision, setEditingDivision] = useState<Division | null>(null);
-  
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null);
-
-  // NEW: State for the import modal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // For form loading
 
   const [formData, setFormData] = useState({
     department: '',
@@ -30,49 +36,56 @@ export default function DivisionsPage() {
     studentCountPerBatch: 20,
   });
 
+  // --- NEW: Fetch data on component mount ---
+  useEffect(() => {
+    if (!isInitialized) {
+      fetchInitialData();
+    }
+  }, [isInitialized, fetchInitialData]);
+  // ------------------------------------------
+
   const departments = ['CE', 'IT', 'MECH', 'EE', 'CIVIL'];
   const years = ['FE', 'SE', 'TE', 'BE'];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
+    // This logic is only for *creating* a new division
+    // Editing division structure (batches) should be a separate, more complex UI
     const batches: Batch[] = [];
     for (let i = 1; i <= formData.batchCount; i++) {
       batches.push({
-        id: `batch-${formData.name}${i}-${Date.now()}`,
+        id: `batch-${formData.name}${i}-${Date.now()}`, // Client-side temp ID
         name: `${formData.name}${i}`,
         studentCount: formData.studentCountPerBatch,
-        electiveChoices: {}, // Initialize empty
+        electiveChoices: {}, 
         minorStudents: [],
       });
     }
 
-    const divisionData: Division = {
-      id: editingDivision?.id || `division-${Date.now()}`,
+    const divisionData: Omit<Division, 'id'> = {
       department: formData.department,
       year: formData.year,
-      name: formData.name,
+      name: formData.name.toUpperCase(),
       batches,
     };
 
     if (editingDivision) {
-      // Preserve existing batch choices when editing
-      const existingBatches = editingDivision.batches.map((b, i) => ({
-        ...batches[i],
-        id: b.id, // Keep old ID
-        name: b.name, // Keep old name
-        electiveChoices: b.electiveChoices || {},
-        minorStudents: b.minorStudents || [],
-      }));
-      divisionData.batches = existingBatches;
-      
-      updateDivision(editingDivision.id, divisionData);
+      // When editing, we only update non-batch info
+      // A more robust solution would be to diff batches
+      const updatePayload: Partial<Division> = {
+        department: formData.department,
+        year: formData.year,
+        name: formData.name.toUpperCase(),
+      };
+      await updateDivision(editingDivision.id, updatePayload);
       toast.success('Division updated successfully!');
     } else {
-      addDivision(divisionData);
-      toast.success('Division added successfully!');
+      await addDivision(divisionData);
     }
-
+    
+    setIsSubmitting(false);
     resetForm();
   };
 
@@ -100,10 +113,9 @@ export default function DivisionsPage() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this division?')) {
-      deleteDivision(id);
-      toast.success('Division deleted successfully!');
+      await deleteDivision(id);
     }
   };
 
@@ -112,6 +124,14 @@ export default function DivisionsPage() {
     setIsAssignModalOpen(true);
   };
 
+  if (!isInitialized && isLoading) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <Loader2 className="w-12 h-12 text-primary-400 animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -119,7 +139,6 @@ export default function DivisionsPage() {
           <h1 className="text-4xl font-bold text-white mb-2">Division Management</h1>
           <p className="text-gray-400">Configure divisions and batches for each department</p>
         </div>
-        {/* UPDATED: Added Import Button */}
         <div className="flex gap-4">
           <motion.button
             className="btn-secondary flex items-center space-x-2"
@@ -132,7 +151,7 @@ export default function DivisionsPage() {
           </motion.button>
           <motion.button
             className="btn-primary flex items-center space-x-2"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setEditingDivision(null); setIsModalOpen(true); }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -144,7 +163,8 @@ export default function DivisionsPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card">
+        {/* ... (Your stats JSX remains unchanged) ... */}
+         <div className="card">
           <div className="text-primary-400 text-sm font-medium mb-1">Total Divisions</div>
           <div className="text-3xl font-bold text-white">{divisions.length}</div>
         </div>
@@ -174,6 +194,7 @@ export default function DivisionsPage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: index * 0.05 }}
           >
+            {/* ... (Your division card layout JSX remains unchanged) ... */}
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-primary-500/20 rounded-lg flex items-center justify-center">
@@ -243,13 +264,14 @@ export default function DivisionsPage() {
         ))}
       </div>
 
-      {divisions.length === 0 && (
+      {divisions.length === 0 && !isLoading && (
         <div className="card text-center py-12">
-          <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+          {/* ... (Your no data message JSX remains unchanged) ... */}
+           <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-400 mb-2">No divisions added yet</h3>
           <p className="text-gray-500 mb-4">Start by adding your first division</p>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setEditingDivision(null); setIsModalOpen(true); }}
             className="btn-primary mx-auto"
           >
             Add Division
@@ -265,11 +287,8 @@ export default function DivisionsPage() {
           title={editingDivision ? 'Edit Division' : 'Add New Division'}
           size="lg"
         >
-            <h2 className="text-2xl font-bold text-white mb-6">
-              {editingDivision ? 'Edit Division' : 'Add New Division'}
-            </h2>
-
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* ... (Your form fields JSX remains unchanged, but disable batch fields when editing) ... */}
               <div>
                 <label className="label">Department *</label>
                 <select
@@ -326,7 +345,7 @@ export default function DivisionsPage() {
                   disabled={!!editingDivision} // Disable if editing
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  {editingDivision ? 'Batch count cannot be changed after creation.' : `Batches will be named ${formData.name}1, ${formData.name}2, etc.`}
+                  {editingDivision ? 'Batch structure cannot be changed after creation.' : `Batches will be named ${formData.name}1, ${formData.name}2, etc.`}
                 </p>
               </div>
 
@@ -344,14 +363,24 @@ export default function DivisionsPage() {
                 />
               </div>
 
+
               <div className="flex space-x-3 pt-4">
-                <button type="submit" className="btn-primary flex-1">
-                  {editingDivision ? 'Update Division' : 'Add Division'}
+                <button 
+                  type="submit" 
+                  className="btn-primary flex-1"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    editingDivision ? 'Update Division' : 'Add Division'
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={resetForm}
                   className="btn-secondary flex-1"
+                  disabled={isSubmitting}
                 >
                   Cancel
                 </button>
@@ -368,7 +397,7 @@ export default function DivisionsPage() {
         />
       )}
 
-      {/* NEW: Import Divisions Modal */}
+      {/* Import Divisions Modal */}
       <Modal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
@@ -381,7 +410,7 @@ export default function DivisionsPage() {
   );
 }
 
-// Assign Electives Modal Component
+// --- UPDATED Assign Electives Modal Component ---
 interface AssignElectivesModalProps {
   division: Division;
   onClose: () => void;
@@ -389,6 +418,7 @@ interface AssignElectivesModalProps {
 
 function AssignElectivesModal({ division, onClose }: AssignElectivesModalProps) {
   const { subjects, updateDivision } = useTimetableStore();
+  const [isSaving, setIsSaving] = useState(false);
   
   const [choices, setChoices] = useState<{ [batchId: string]: { [subjectId: string]: string } }>({});
 
@@ -420,15 +450,23 @@ function AssignElectivesModal({ division, onClose }: AssignElectivesModalProps) 
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setIsSaving(true);
     const updatedBatches = division.batches.map(batch => ({
       ...batch,
       electiveChoices: choices[batch.id] || {},
     }));
     
-    updateDivision(division.id, { batches: updatedBatches });
-    toast.success('Elective choices saved!');
-    onClose();
+    try {
+      // This is now an async API call
+      await updateDivision(division.id, { batches: updatedBatches }); 
+      toast.success('Elective choices saved!');
+      onClose();
+    } catch (error) {
+      toast.error('Failed to save choices.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -474,13 +512,23 @@ function AssignElectivesModal({ division, onClose }: AssignElectivesModalProps) 
       </div>
 
       <div className="flex space-x-3 pt-6">
-        <button type="button" onClick={handleSave} className="btn-primary flex-1" disabled={electiveSubjects.length === 0}>
-          Save Choices
+        <button 
+          type="button" 
+          onClick={handleSave} 
+          className="btn-primary flex-1" 
+          disabled={electiveSubjects.length === 0 || isSaving}
+        >
+          {isSaving ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            'Save Choices'
+          )}
         </button>
         <button
           type="button"
           onClick={onClose}
           className="btn-secondary flex-1"
+          disabled={isSaving}
         >
           Cancel
         </button>

@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-// UPDATED: Import Upload and Modal
-import { Plus, Edit, Trash2, Building2, Beaker, Upload } from 'lucide-react';
+import { Plus, Edit, Trash2, Building2, Beaker, Upload, Loader2 } from 'lucide-react';
 import { useTimetableStore } from '@/lib/store';
 import { Room } from '@/lib/types';
 import toast from 'react-hot-toast';
@@ -11,12 +10,20 @@ import { Modal } from '@/components/ui/Modal';
 import { ImportRooms } from '@/components/ImportRooms';
 
 export default function RoomsPage() {
-  const { rooms, addRoom, updateRoom, deleteRoom } = useTimetableStore();
+  const { 
+    rooms, 
+    addRoom, 
+    updateRoom, 
+    deleteRoom,
+    fetchInitialData,
+    isInitialized,
+    isLoading
+  } = useTimetableStore();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
-
-  // NEW: State for import modal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [formData, setFormData] = useState({
     roomNumber: '',
@@ -25,13 +32,21 @@ export default function RoomsPage() {
     department: '',
   });
 
+  // --- NEW: Fetch data on component mount ---
+  useEffect(() => {
+    if (!isInitialized) {
+      fetchInitialData();
+    }
+  }, [isInitialized, fetchInitialData]);
+  // ------------------------------------------
+
   const departments = ['CE', 'IT', 'MECH', 'EE', 'CIVIL', 'General'];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
-    const roomData: Room = {
-      id: editingRoom?.id || `room-${Date.now()}`,
+    const roomData: Omit<Room, 'id'> = {
       roomNumber: formData.roomNumber,
       category: formData.category,
       capacity: Number(formData.capacity),
@@ -39,13 +54,12 @@ export default function RoomsPage() {
     };
 
     if (editingRoom) {
-      updateRoom(editingRoom.id, roomData);
-      toast.success('Room updated successfully!');
+      await updateRoom(editingRoom.id, roomData);
     } else {
-      addRoom(roomData);
-      toast.success('Room added successfully!');
+      await addRoom(roomData);
     }
 
+    setIsSubmitting(false);
     resetForm();
   };
 
@@ -71,12 +85,19 @@ export default function RoomsPage() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this room?')) {
-      deleteRoom(id);
-      toast.success('Room deleted successfully!');
+      await deleteRoom(id);
     }
   };
+
+  if (!isInitialized && isLoading) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <Loader2 className="w-12 h-12 text-primary-400 animate-spin" />
+      </div>
+    );
+  }
 
   const classrooms = rooms.filter(r => r.category === 'CLASSROOM');
   const labs = rooms.filter(r => r.category === 'LAB');
@@ -88,7 +109,6 @@ export default function RoomsPage() {
           <h1 className="text-4xl font-bold text-white mb-2">Room Management</h1>
           <p className="text-gray-400">Configure classrooms and laboratories</p>
         </div>
-        {/* UPDATED: Added Import Button */}
         <div className="flex gap-4">
           <motion.button
             className="btn-secondary flex items-center space-x-2"
@@ -101,7 +121,7 @@ export default function RoomsPage() {
           </motion.button>
           <motion.button
             className="btn-primary flex items-center space-x-2"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setEditingRoom(null); setIsModalOpen(true); }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -113,6 +133,7 @@ export default function RoomsPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* ... (Your stats JSX remains unchanged) ... */}
         <div className="card">
           <div className="text-primary-400 text-sm font-medium mb-1">Total Rooms</div>
           <div className="text-3xl font-bold text-white">{rooms.length}</div>
@@ -135,6 +156,7 @@ export default function RoomsPage() {
 
       {/* Classrooms Section */}
       <div className="space-y-4">
+        {/* ... (Your classrooms JSX remains unchanged) ... */}
         <h2 className="text-2xl font-bold text-white flex items-center space-x-2">
           <Building2 className="w-6 h-6 text-primary-400" />
           <span>Classrooms ({classrooms.length})</span>
@@ -188,6 +210,7 @@ export default function RoomsPage() {
 
       {/* Labs Section */}
       <div className="space-y-4">
+        {/* ... (Your labs JSX remains unchanged) ... */}
         <h2 className="text-2xl font-bold text-white flex items-center space-x-2">
           <Beaker className="w-6 h-6 text-purple-400" />
           <span>Laboratories ({labs.length})</span>
@@ -239,13 +262,14 @@ export default function RoomsPage() {
         </div>
       </div>
 
-      {rooms.length === 0 && (
+      {rooms.length === 0 && !isLoading && (
         <div className="card text-center py-12">
-          <Building2 className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+          {/* ... (Your no data message JSX remains unchanged) ... */}
+           <Building2 className="w-16 h-16 text-gray-600 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-400 mb-2">No rooms added yet</h3>
           <p className="text-gray-500 mb-4">Start by adding your first room</p>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setEditingRoom(null); setIsModalOpen(true); }}
             className="btn-primary mx-auto"
           >
             Add Room
@@ -253,7 +277,7 @@ export default function RoomsPage() {
         </div>
       )}
 
-      {/* UPDATED: Refactored to use Modal component */}
+      {/* Add/Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={resetForm}
@@ -261,7 +285,8 @@ export default function RoomsPage() {
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
+          {/* ... (Your form fields JSX remains unchanged) ... */}
+           <div>
             <label className="label">Room Number *</label>
             <input
               type="text"
@@ -314,13 +339,22 @@ export default function RoomsPage() {
           </div>
 
           <div className="flex space-x-3 pt-4">
-            <button type="submit" className="btn-primary flex-1">
-              {editingRoom ? 'Update Room' : 'Add Room'}
+            <button 
+              type="submit" 
+              className="btn-primary flex-1"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                editingRoom ? 'Update Room' : 'Add Room'
+              )}
             </button>
             <button
               type="button"
               onClick={resetForm}
               className="btn-secondary flex-1"
+              disabled={isSubmitting}
             >
               Cancel
             </button>
@@ -328,7 +362,7 @@ export default function RoomsPage() {
         </form>
       </Modal>
 
-      {/* NEW: Import Rooms Modal */}
+      {/* Import Rooms Modal */}
       <Modal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}

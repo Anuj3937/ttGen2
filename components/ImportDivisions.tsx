@@ -11,8 +11,17 @@ interface ImportDivisionsProps {
   onClose: () => void;
 }
 
+// This interface matches a row in your Department_Batch_Structure.csv
+interface DivisionCSVRow {
+  Department: string;
+  Year: string;
+  DivisionName: string;
+  BatchCount: string; // This is actually the batch number (1, 2, 3)
+  StudentsPerBatch: string;
+}
+
 export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => {
-  const { addDivision } = useTimetableStore();
+  const store = useTimetableStore();
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -34,46 +43,78 @@ export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => 
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         try {
-          const newDivisions: Division[] = [];
-
-          for (const row of results.data as any[]) {
+          // Use a Map to group batches into divisions
+          const divisionMap = new Map<string, Omit<Division, 'id'>>();
+          
+          for (const row of results.data as DivisionCSVRow[]) {
+            const dept = (row['Department'] || '').trim().toUpperCase();
+            const year = (row['Year'] || '').trim().toUpperCase();
             const divName = (row['DivisionName'] || '').trim().toUpperCase();
-            const batchCount = Number(row['BatchCount']) || 0;
-            const studentsPerBatch = Number(row['StudentsPerBatch']) || 0;
+            const batchNumber = (row['BatchCount'] || '').trim(); // This is '1', '2', '3'
+            const studentCount = Number(row['StudentsPerBatch']) || 0;
 
-            // Create batches based on count
-            const batches: Batch[] = [];
-            for (let i = 1; i <= batchCount; i++) {
-              batches.push({
-                id: `batch-${divName}${i}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-                name: `${divName}${i}`, // e.g., A1, A2, A3
-                studentCount: studentsPerBatch,
-                electiveChoices: {},
-                minorStudents: [],
-              });
+            if (!dept || !year || !divName || !batchNumber || studentCount === 0) {
+              console.warn('Skipping invalid row:', row);
+              continue;
             }
 
-            const newDivision: Division = {
-              id: `division-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              department: (row['Department'] || '').trim().toUpperCase(),
-              year: (row['Year'] || '').trim().toUpperCase(),
-              name: divName,
-              batches: batches,
+            const divisionKey = `${dept}-${year}-${divName}`;
+
+            // Create the new batch
+            const newBatch: Batch = {
+              id: `batch-${divName}${batchNumber}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+              name: `${divName}${batchNumber}`, // e.g., A1, A2, A3
+              studentCount: studentCount,
+              electiveChoices: {},
+              minorStudents: [],
             };
 
-            // Basic validation
-            if (newDivision.department && newDivision.year && newDivision.name && batches.length > 0) {
-              newDivisions.push(newDivision);
+            // Check if we already started this division
+            if (divisionMap.has(divisionKey)) {
+              // Add batch to existing division
+              divisionMap.get(divisionKey)!.batches.push(newBatch);
+            } else {
+              // Create a new division
+              const newDivision: Omit<Division, 'id'> = {
+                department: dept,
+                year: year,
+                name: divName,
+                batches: [newBatch], // Add the first batch
+              };
+              divisionMap.set(divisionKey, newDivision);
             }
           }
           
-          // Add all new divisions to the store
-          newDivisions.forEach(div => addDivision(div));
+          const newDivisions = Array.from(divisionMap.values());
+
+          if (newDivisions.length === 0) {
+            toast.error('No valid divisions found to import.', { id: 'import-div' });
+            setIsImporting(false);
+            return;
+          }
+
+          // --- NEW: Call the batch-import API ---
+          const response = await fetch('/api/divisions/batch-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newDivisions),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save divisions to database');
+          }
+
+          const { importedDivisions } = await response.json();
+          
+          // --- NEW: Update the local store state ---
+          store.setState((state) => ({
+            divisions: [...state.divisions, ...importedDivisions],
+          }));
           
           setIsImporting(false);
-          toast.success(`Successfully imported ${newDivisions.length} divisions!`, { id: 'import-div' });
+          toast.success(`Successfully imported ${importedDivisions.length} divisions!`, { id: 'import-div' });
           onClose();
 
         } catch (error: any) {
@@ -102,7 +143,7 @@ export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => 
             {file ? file.name : 'Click to upload a .csv file'}
           </span>
           <p className="text-xs text-gray-500 mt-1">
-            Columns: 'Department', 'Year', 'DivisionName', 'BatchCount', 'StudentsPerBatch'
+            Columns: 'Department', 'Year', 'DivisionName', 'BatchCount' (1, 2, 3...), 'StudentsPerBatch'
           </p>
           <input
             id="file-upload-div"

@@ -11,8 +11,16 @@ interface ImportFacultyProps {
   onClose: () => void;
 }
 
+// This interface matches a row in your Faculty_Data_Structure.csv
+interface FacultyCSVRow {
+  Faculty_Name: string;
+  Faculty_Code: string;
+  Designation: string;
+  MaxWorkload: string;
+}
+
 export const ImportFaculty: React.FC<ImportFacultyProps> = ({ onClose }) => {
-  const { addFaculty } = useTimetableStore();
+  const store = useTimetableStore();
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -34,36 +42,53 @@ export const ImportFaculty: React.FC<ImportFacultyProps> = ({ onClose }) => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         try {
-          const newFacultyList: Faculty[] = [];
+          const newFacultyList: Omit<Faculty, 'id' | 'currentWorkload'>[] = [];
 
-          for (const row of results.data as any[]) {
+          for (const row of results.data as FacultyCSVRow[]) {
             const facultyName = (row['Faculty_Name'] || '').trim();
             const facultyCode = (row['Faculty_Code'] || '').trim();
 
-            const newFaculty: Faculty = {
-              id: `faculty-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              name: facultyName,
-              initials: facultyCode,
-              designation: (row['Designation'] || 'Assistant Professor').trim(),
-              maxWorkload: Number(row['MaxWorkload']) || 20, // Default 20
-              currentWorkload: 0,
-              subjects: [], // Subjects must be linked manually
-              preferences: {},
-            };
-
-            // Basic validation
-            if (newFaculty.name && newFaculty.initials) {
+            if (facultyName && facultyCode) {
+              const newFaculty: Omit<Faculty, 'id' | 'currentWorkload'> = {
+                name: facultyName,
+                initials: facultyCode,
+                designation: (row['Designation'] || 'Assistant Professor').trim(),
+                maxWorkload: Number(row['MaxWorkload']) || 20, // Default 20
+                subjects: [], // Subjects must be linked manually
+                preferences: {},
+              };
               newFacultyList.push(newFaculty);
             }
           }
           
-          // Add all new faculty to the store
-          newFacultyList.forEach(faculty => addFaculty(faculty));
-          
+          if (newFacultyList.length === 0) {
+             toast.error('No valid faculty members found to import.', { id: 'import-faculty' });
+             setIsImporting(false);
+             return;
+          }
+
+          // --- NEW: Call the batch-import API ---
+          const response = await fetch('/api/faculty/batch-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newFacultyList),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save faculty to database');
+          }
+
+          const { importedFaculty } = await response.json();
+
+          // --- NEW: Update the local store state ---
+          store.setState((state) => ({
+            faculty: [...state.faculty, ...importedFaculty],
+          }));
+
           setIsImporting(false);
-          toast.success(`Successfully imported ${newFacultyList.length} faculty members!`, { id: 'import-faculty' });
+          toast.success(`Successfully imported ${importedFaculty.length} faculty members!`, { id: 'import-faculty' });
           onClose();
 
         } catch (error: any) {
