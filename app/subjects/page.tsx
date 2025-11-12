@@ -2,22 +2,31 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Edit, Trash2, BookOpen } from 'lucide-react';
+// UPDATED: Import Upload icon and Modal
+import { Plus, Edit, Trash2, BookOpen, Upload } from 'lucide-react';
 import { useTimetableStore } from '@/lib/store';
 import { Subject, SubjectType } from '@/lib/types';
 import toast from 'react-hot-toast';
+import { Modal } from '@/components/ui/Modal'; // Import Modal
+import { ImportSubjects } from '@/components/ImportSubjects'; // Import new component
 
 export default function SubjectsPage() {
   const { subjects, addSubject, updateSubject, deleteSubject } = useTimetableStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  
+  // NEW: State for the import modal
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     code: '',
     department: '',
     year: '',
+    semester: '', // Added semester
     theoryHours: 0,
     practicalHours: 0,
+    tutorialHours: 0, // Added tutorial
     type: 'CORE' as SubjectType,
     electives: '',
   });
@@ -25,6 +34,8 @@ export default function SubjectsPage() {
   const departments = ['CE', 'IT', 'MECH', 'EE', 'CIVIL'];
   const years = ['FE', 'SE', 'TE', 'BE'];
   const subjectTypes: SubjectType[] = ['CORE', 'LAB', 'DLO', 'ILO', 'MINOR'];
+  // NEW: Semesters list for the form
+  const semesters = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,10 +50,12 @@ export default function SubjectsPage() {
       code: formData.code,
       department: formData.department,
       year: formData.year,
+      semester: formData.semester, // Added
       theoryHours: Number(formData.theoryHours),
       practicalHours: Number(formData.practicalHours),
+      tutorialHours: Number(formData.tutorialHours), // Added
       type: formData.type,
-      electives: (formData.type === 'DLO' || formData.type === 'ILO') ? electivesArray : undefined,
+      electives: (formData.type === 'DLO' || formData.type === 'ILO' || formData.type === 'MINOR') ? electivesArray : undefined,
     };
 
     if (editingSubject) {
@@ -62,8 +75,10 @@ export default function SubjectsPage() {
       code: '',
       department: '',
       year: '',
+      semester: '', // Added
       theoryHours: 0,
       practicalHours: 0,
+      tutorialHours: 0, // Added
       type: 'CORE',
       electives: '',
     });
@@ -78,8 +93,10 @@ export default function SubjectsPage() {
       code: subject.code,
       department: subject.department,
       year: subject.year,
+      semester: subject.semester, // Added
       theoryHours: subject.theoryHours,
       practicalHours: subject.practicalHours,
+      tutorialHours: subject.tutorialHours, // Added
       type: subject.type,
       electives: subject.electives?.join(', ') || '',
     });
@@ -100,20 +117,33 @@ export default function SubjectsPage() {
           <h1 className="text-4xl font-bold text-white mb-2">Subject Management</h1>
           <p className="text-gray-400">Manage subjects with theory and practical hours</p>
         </div>
-        <motion.button
-          className="btn-primary flex items-center space-x-2"
-          onClick={() => setIsModalOpen(true)}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <Plus className="w-5 h-5" />
-          <span>Add Subject</span>
-        </motion.button>
+        {/* UPDATED: Added Import Button */}
+        <div className="flex gap-4">
+          <motion.button
+            className="btn-secondary flex items-center space-x-2"
+            onClick={() => setIsImportModalOpen(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Upload className="w-5 h-5" />
+            <span>Import from CSV</span>
+          </motion.button>
+          <motion.button
+            className="btn-primary flex items-center space-x-2"
+            onClick={() => setIsModalOpen(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Plus className="w-5 h-5" />
+            <span>Add Subject</span>
+          </motion.button>
+        </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="card">
+        {/* ... (stats cards remain the same) ... */}
+         <div className="card">
           <div className="text-primary-400 text-sm font-medium mb-1">Total Subjects</div>
           <div className="text-3xl font-bold text-white">{subjects.length}</div>
         </div>
@@ -130,9 +160,9 @@ export default function SubjectsPage() {
           </div>
         </div>
         <div className="card">
-          <div className="text-primary-400 text-sm font-medium mb-1">Electives</div>
+          <div className="text-primary-400 text-sm font-medium mb-1">Electives/Minors</div>
           <div className="text-3xl font-bold text-white">
-            {subjects.filter(s => s.type === 'DLO' || s.type === 'ILO').length}
+            {subjects.filter(s => s.type === 'DLO' || s.type === 'ILO' || s.type === 'MINOR').length}
           </div>
         </div>
       </div>
@@ -170,21 +200,23 @@ export default function SubjectsPage() {
             <div className="space-y-2 mb-4">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">Department:</span>
-                <span className="text-white font-medium">{subject.department} - {subject.year}</span>
+                <span className="text-white font-medium">{subject.department} - {subject.year} (Sem {subject.semester})</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Theory Hours:</span>
+                <span className="text-gray-400">Theory:</span>
                 <span className="text-white font-medium">{subject.theoryHours}h/week</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Practical Hours:</span>
+                <span className="text-gray-400">Practical:</span>
                 <span className="text-white font-medium">{subject.practicalHours}h/week</span>
               </div>
               {subject.electives && (
                 <div className="text-sm">
                   <span className="text-gray-400">Electives:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {subject.electives.map((elective, i) => (
+                    {subject.electives.length === 0 ? (
+                       <span className="text-gray-500 text-xs italic">No choices added</span>
+                    ) : subject.electives.map((elective, i) => (
                       <span key={i} className="px-2 py-0.5 bg-primary-500/10 text-primary-400 rounded text-xs">
                         {elective}
                       </span>
@@ -216,159 +248,185 @@ export default function SubjectsPage() {
 
       {subjects.length === 0 && (
         <div className="card text-center py-12">
-          <BookOpen className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-400 mb-2">No subjects added yet</h3>
-          <p className="text-gray-500 mb-4">Start by adding your first subject</p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="btn-primary mx-auto"
-          >
-            Add Subject
-          </button>
+          {/* ... (no data message) ... */}
         </div>
       )}
 
-      {/* Modal */}
+      {/* Add/Edit Subject Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <motion.div
-            className="glass-dark rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <h2 className="text-2xl font-bold text-white mb-6">
-              {editingSubject ? 'Edit Subject' : 'Add New Subject'}
-            </h2>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Subject Name *</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                    placeholder="e.g., Data Structures & Algorithms"
-                  />
-                </div>
-
-                <div>
-                  <label className="label">Subject Code *</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                    required
-                    placeholder="e.g., DSA"
-                  />
-                </div>
-
-                <div>
-                  <label className="label">Department *</label>
-                  <select
-                    className="input-field"
-                    value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    required
-                  >
-                    <option value="">Select Department</option>
-                    {departments.map(dept => (
-                      <option key={dept} value={dept}>{dept}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="label">Year *</label>
-                  <select
-                    className="input-field"
-                    value={formData.year}
-                    onChange={(e) => setFormData({ ...formData, year: e.target.value })}
-                    required
-                  >
-                    <option value="">Select Year</option>
-                    {years.map(year => (
-                      <option key={year} value={year}>{year}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="label">Subject Type *</label>
-                  <select
-                    className="input-field"
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value as SubjectType })}
-                    required
-                  >
-                    {subjectTypes.map(type => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="label">Theory Hours/Week *</label>
-                  <input
-                    type="number"
-                    className="input-field"
-                    value={formData.theoryHours}
-                    onChange={(e) => setFormData({ ...formData, theoryHours: Number(e.target.value) })}
-                    min="0"
-                    max="10"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="label">Practical Hours/Week *</label>
-                  <input
-                    type="number"
-                    className="input-field"
-                    value={formData.practicalHours}
-                    onChange={(e) => setFormData({ ...formData, practicalHours: Number(e.target.value) })}
-                    min="0"
-                    max="10"
-                    required
-                  />
-                </div>
-
-                {(formData.type === 'DLO' || formData.type === 'ILO') && (
-                  <div className="md:col-span-2">
-                    <label className="label">Elective Options (comma-separated)</label>
-                    <input
-                      type="text"
-                      className="input-field"
-                      value={formData.electives}
-                      onChange={(e) => setFormData({ ...formData, electives: e.target.value })}
-                      placeholder="e.g., Machine Learning, Cloud Computing, IoT"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Enter elective choices separated by commas
-                    </p>
-                  </div>
-                )}
+        <Modal
+          isOpen={isModalOpen}
+          onClose={resetForm}
+          title={editingSubject ? 'Edit Subject' : 'Add New Subject'}
+          size="xl"
+        >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Subject Name *</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                  placeholder="e.g., Data Structures & Algorithms"
+                />
               </div>
 
-              <div className="flex space-x-3 pt-4">
-                <button type="submit" className="btn-primary flex-1">
-                  {editingSubject ? 'Update Subject' : 'Add Subject'}
-                </button>
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="btn-secondary flex-1"
+              <div>
+                <label className="label">Subject Code *</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  required
+                  placeholder="e.g., DSA"
+                />
+              </div>
+
+              <div>
+                <label className="label">Department *</label>
+                <select
+                  className="input-field"
+                  value={formData.department}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                  required
                 >
-                  Cancel
-                </button>
+                  <option value="">Select Department</option>
+                  {departments.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
               </div>
-            </form>
-          </motion.div>
-        </div>
+
+              <div>
+                <label className="label">Year *</label>
+                <select
+                  className="input-field"
+                  value={formData.year}
+                  onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+                  required
+                >
+                  <option value="">Select Year</option>
+                  {years.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="label">Semester *</label>
+                <select
+                  className="input-field"
+                  value={formData.semester}
+                  onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
+                  required
+                >
+                  <option value="">Select Semester</option>
+                  {semesters.map(sem => (
+                    <option key={sem} value={sem}>{sem}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="label">Subject Type *</label>
+                <select
+                  className="input-field"
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as SubjectType })}
+                  required
+                >
+                  {subjectTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="label">Theory Hours/Week *</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  value={formData.theoryHours}
+                  onChange={(e) => setFormData({ ...formData, theoryHours: Number(e.target.value) })}
+                  min="0"
+                  max="10"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="label">Practical Hours/Week *</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  value={formData.practicalHours}
+                  onChange={(e) => setFormData({ ...formData, practicalHours: Number(e.target.value) })}
+                  min="0"
+                  max="10"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="label">Tutorial Hours/Week</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  value={formData.tutorialHours}
+                  onChange={(e) => setFormData({ ...formData, tutorialHours: Number(e.target.value) })}
+                  min="0"
+                  max="10"
+                />
+              </div>
+            </div>
+
+            {(formData.type === 'DLO' || formData.type === 'ILO' || formData.type === 'MINOR') && (
+              <div>
+                <label className="label">Elective Options (comma-separated)</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={formData.electives}
+                  onChange={(e) => setFormData({ ...formData, electives: e.target.value })}
+                  placeholder="e.g., Machine Learning, Cloud Computing, IoT"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter elective choices separated by commas (e.g., CI, IDS)
+                </p>
+              </div>
+            )}
+
+            <div className="flex space-x-3 pt-4">
+              <button type="submit" className="btn-primary flex-1">
+                {editingSubject ? 'Update Subject' : 'Add Subject'}
+              </button>
+              <button
+                type="button"
+                onClick={resetForm}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
+
+      {/* NEW: Import Subjects Modal */}
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="Import Subjects from CSV"
+        size="lg"
+      >
+        <ImportSubjects onClose={() => setIsImportModalOpen(false)} />
+      </Modal>
     </div>
   );
 }

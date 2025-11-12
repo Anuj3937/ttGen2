@@ -9,6 +9,7 @@ import {
   TimeSlot,
   DAYS,
   TIME_SLOTS,
+  Batch,
 } from './types';
 
 interface Slot {
@@ -75,12 +76,12 @@ class TimetableGenerator {
         return false;
       }
       
-      // Check division availability (for theory classes)
+      // Check division availability (for core theory classes)
       if (!batchId && this.divisionSchedule.get(divisionId)?.has(slotKey)) {
         return false;
       }
       
-      // Check batch availability (for practicals)
+      // Check batch availability (for practicals OR elective/minor theory)
       if (batchId && this.batchSchedule.get(batchId)?.has(slotKey)) {
         return false;
       }
@@ -131,7 +132,7 @@ class TimetableGenerator {
       }
       this.roomSchedule.get(roomId)!.add(slotKey);
       
-      // Mark division as occupied (for theory)
+      // Mark division as occupied (for core theory)
       if (!batchId) {
         if (!this.divisionSchedule.has(divisionId)) {
           this.divisionSchedule.set(divisionId, new Set());
@@ -139,7 +140,7 @@ class TimetableGenerator {
         this.divisionSchedule.get(divisionId)!.add(slotKey);
       }
       
-      // Mark batch as occupied (for practicals)
+      // Mark batch as occupied (for practicals OR elective/minor theory)
       if (batchId) {
         if (!this.batchSchedule.has(batchId)) {
           this.batchSchedule.set(batchId, new Set());
@@ -261,10 +262,12 @@ class TimetableGenerator {
     };
   }
 
+  // UPDATED: Added 'batch' argument
   private scheduleTheoryClass(
     subject: Subject,
     division: Division,
-    hoursNeeded: number
+    hoursNeeded: number,
+    batch: Batch | undefined = undefined // ADDED THIS ARGUMENT
   ): boolean {
     const availableFaculty = this.faculty.filter(f => 
       f.subjects.includes(subject.id) && f.currentWorkload < f.maxWorkload
@@ -281,11 +284,12 @@ class TimetableGenerator {
       const faculty = availableFaculty[0];
       const room = availableRooms[0];
       
+      // UPDATED: Pass batch?.id to findAvailableSlot
       const slot = this.findAvailableSlot(
         faculty.id,
         room.id,
         division.id,
-        undefined,
+        batch?.id, // UPDATED
         1,
         subject.type === 'MINOR'
       );
@@ -301,11 +305,13 @@ class TimetableGenerator {
         faculty,
         room,
         division,
+        batch: batch, // UPDATED
         type: 'THEORY',
       };
       
       this.timetableEntries.push(entry);
-      this.markSlotAsOccupied(faculty.id, room.id, division.id, undefined, slot.day, slot.startTime, slot.duration);
+      // UPDATED: Pass batch?.id to markSlotAsOccupied
+      this.markSlotAsOccupied(faculty.id, room.id, division.id, batch?.id, slot.day, slot.startTime, slot.duration);
       
       faculty.currentWorkload += slot.duration;
       hoursScheduled += slot.duration;
@@ -393,9 +399,9 @@ class TimetableGenerator {
       const coreAndLabSubjects = divisionSubjects.filter(s => s.type === 'CORE' || s.type === 'LAB');
       
       for (const subject of coreAndLabSubjects) {
-        // Schedule theory hours
+        // Schedule theory hours (for the whole division, no batch)
         if (subject.theoryHours > 0) {
-          this.scheduleTheoryClass(subject, division, subject.theoryHours);
+          this.scheduleTheoryClass(subject, division, subject.theoryHours, undefined);
         }
         
         // Schedule practical hours for each batch
@@ -406,8 +412,8 @@ class TimetableGenerator {
         }
       }
       
-      // Schedule electives (DLO/ILO)
-      const electiveSubjects = divisionSubjects.filter(s => s.type === 'DLO' || s.type === 'ILO');
+      // UPDATED: Schedule electives (DLO/ILO) AND MINORS together
+      const electiveSubjects = divisionSubjects.filter(s => s.type === 'DLO' || s.type === 'ILO' || s.type === 'MINOR');
       
       for (const subject of electiveSubjects) {
         // Group batches by elective choice
@@ -428,7 +434,8 @@ class TimetableGenerator {
           if (subject.theoryHours > 0) {
             // For electives, schedule theory for each batch group
             batches.forEach(batch => {
-              this.scheduleTheoryClass(subject, division, subject.theoryHours);
+              // UPDATED: Pass the batch to scheduleTheoryClass
+              this.scheduleTheoryClass(subject, division, subject.theoryHours, batch);
             });
           }
           
@@ -440,25 +447,7 @@ class TimetableGenerator {
         });
       }
       
-      // Schedule minors (for students who opted)
-      const minorSubjects = divisionSubjects.filter(s => s.type === 'MINOR');
-      
-      for (const subject of minorSubjects) {
-        // Find batches with minor students
-        const batchesWithMinors = division.batches.filter(b => 
-          b.minorStudents && b.minorStudents.length > 0
-        );
-        
-        for (const batch of batchesWithMinors) {
-          if (subject.theoryHours > 0) {
-            this.scheduleTheoryClass(subject, division, subject.theoryHours);
-          }
-          
-          if (subject.practicalHours > 0) {
-            this.schedulePracticalClass(subject, division, batch, subject.practicalHours);
-          }
-        }
-      }
+      // DELETED: The old, separate scheduling loop for MINORs is removed.
     }
     
     // Organize timetables by division, faculty, and room

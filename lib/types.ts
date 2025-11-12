@@ -6,10 +6,12 @@ export interface Subject {
   code: string;
   department: string;
   year: string; // FE, SE, TE, BE
+  semester: string; // NEW: III, IV, V, etc.
   theoryHours: number;
   practicalHours: number;
+  tutorialHours: number; // NEW
   type: SubjectType;
-  electives?: string[]; // For DLO/ILO - list of elective options
+  electives?: string[]; // For DLO/ILO/MINOR - list of elective options
 }
 
 export interface Division {
@@ -24,7 +26,7 @@ export interface Batch {
   id: string;
   name: string; // A1, A2, A3
   studentCount: number;
-  electiveChoices?: { [subjectId: string]: string }; // For DLO/ILO
+  electiveChoices?: { [subjectId: string]: string }; // For DLO/ILO/MINOR
   minorStudents?: string[]; // List of student IDs who opted for minor
 }
 
@@ -66,7 +68,7 @@ export interface TimetableEntry {
   faculty: Faculty;
   room: Room;
   division: Division;
-  batch?: Batch; // For practicals
+  batch?: Batch; // For practicals or elective/minor theory
   type: 'THEORY' | 'PRACTICAL';
 }
 

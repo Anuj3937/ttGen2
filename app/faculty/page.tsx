@@ -2,15 +2,22 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Edit, Trash2, UserCircle, Award } from 'lucide-react';
+// UPDATED: Import Upload and Modal
+import { Plus, Edit, Trash2, UserCircle, Award, Upload } from 'lucide-react';
 import { useTimetableStore } from '@/lib/store';
 import { Faculty } from '@/lib/types';
 import toast from 'react-hot-toast';
+import { Modal } from '@/components/ui/Modal';
+import { ImportFaculty } from '@/components/ImportFaculty';
 
 export default function FacultyPage() {
   const { faculty, subjects, addFaculty, updateFaculty, deleteFaculty } = useTimetableStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
+
+  // NEW: State for import modal
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     initials: '',
@@ -19,7 +26,7 @@ export default function FacultyPage() {
     subjects: [] as string[],
   });
 
-  const designations = ['Professor', 'Associate Professor', 'Assistant Professor', 'Lecturer'];
+  const designations = ['Professor', 'Associate Professor', 'Assistant Professor', 'Lecturer', 'TA'];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,19 +100,32 @@ export default function FacultyPage() {
           <h1 className="text-4xl font-bold text-white mb-2">Faculty Management</h1>
           <p className="text-gray-400">Manage faculty members and their workload</p>
         </div>
-        <motion.button
-          className="btn-primary flex items-center space-x-2"
-          onClick={() => setIsModalOpen(true)}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <Plus className="w-5 h-5" />
-          <span>Add Faculty</span>
-        </motion.button>
+        {/* UPDATED: Added Import Button */}
+        <div className="flex gap-4">
+          <motion.button
+            className="btn-secondary flex items-center space-x-2"
+            onClick={() => setIsImportModalOpen(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Upload className="w-5 h-5" />
+            <span>Import from CSV</span>
+          </motion.button>
+          <motion.button
+            className="btn-primary flex items-center space-x-2"
+            onClick={() => setIsModalOpen(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Plus className="w-5 h-5" />
+            <span>Add Faculty</span>
+          </motion.button>
+        </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* ... (stats cards remain the same) ... */}
         <div className="card">
           <div className="text-primary-400 text-sm font-medium mb-1">Total Faculty</div>
           <div className="text-3xl font-bold text-white">{faculty.length}</div>
@@ -127,7 +147,7 @@ export default function FacultyPage() {
         <div className="card">
           <div className="text-primary-400 text-sm font-medium mb-1">Available Hours</div>
           <div className="text-3xl font-bold text-white">
-            {faculty.reduce((sum, f) => sum + (f.maxWorkload - f.currentWorkload), 0)}h
+            {faculty.reduce((sum, f) => sum + (f.maxWorkload - (f.currentWorkload || 0)), 0)}h
           </div>
         </div>
       </div>
@@ -166,7 +186,7 @@ export default function FacultyPage() {
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-gray-400">Workload</span>
                     <span className="text-white font-medium">
-                      {member.currentWorkload}/{member.maxWorkload}h
+                      {member.currentWorkload || 0}/{member.maxWorkload}h
                     </span>
                   </div>
                   <div className="w-full bg-dark-700 rounded-full h-2">
@@ -226,130 +246,125 @@ export default function FacultyPage() {
 
       {faculty.length === 0 && (
         <div className="card text-center py-12">
-          <UserCircle className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-400 mb-2">No faculty added yet</h3>
-          <p className="text-gray-500 mb-4">Start by adding your first faculty member</p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="btn-primary mx-auto"
-          >
-            Add Faculty
-          </button>
+          {/* ... (no data message) ... */}
         </div>
       )}
 
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <motion.div
-            className="glass-dark rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <h2 className="text-2xl font-bold text-white mb-6">
-              {editingFaculty ? 'Edit Faculty' : 'Add New Faculty'}
-            </h2>
+      {/* UPDATED: Add/Edit Modal (now uses Modal component) */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={resetForm}
+        title={editingFaculty ? 'Edit Faculty' : 'Add New Faculty'}
+        size="xl"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Full Name *</label>
+              <input
+                type="text"
+                className="input-field"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+                placeholder="e.g., Dr. John Smith"
+              />
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Full Name *</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                    placeholder="e.g., Dr. John Smith"
-                  />
-                </div>
+            <div>
+              <label className="label">Initials *</label>
+              <input
+                type="text"
+                className="input-field"
+                value={formData.initials}
+                onChange={(e) => setFormData({ ...formData, initials: e.target.value })}
+                required
+                placeholder="e.g., JDS"
+              />
+            </div>
 
-                <div>
-                  <label className="label">Initials *</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    value={formData.initials}
-                    onChange={(e) => setFormData({ ...formData, initials: e.target.value })}
-                    required
-                    placeholder="e.g., JDS"
-                  />
-                </div>
+            <div>
+              <label className="label">Designation *</label>
+              <select
+                className="input-field"
+                value={formData.designation}
+                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                required
+              >
+                <option value="">Select Designation</option>
+                {designations.map(deg => (
+                  <option key={deg} value={deg}>{deg}</option>
+                ))}
+              </select>
+            </div>
 
-                <div>
-                  <label className="label">Designation *</label>
-                  <select
-                    className="input-field"
-                    value={formData.designation}
-                    onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-                    required
+            <div>
+              <label className="label">Max Weekly Workload (hours) *</label>
+              <input
+                type="number"
+                className="input-field"
+                value={formData.maxWorkload}
+                onChange={(e) => setFormData({ ...formData, maxWorkload: Number(e.target.value) })}
+                min="1"
+                max="40"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Can Teach Subjects *</label>
+            <div className="max-h-48 overflow-y-auto space-y-2 p-4 glass rounded-lg">
+              {subjects.length === 0 ? (
+                <p className="text-gray-500 text-sm">No subjects available. Please add subjects first.</p>
+              ) : (
+                subjects.map(subject => (
+                  <label
+                    key={subject.id}
+                    className="flex items-center space-x-3 p-2 hover:bg-white/5 rounded cursor-pointer"
                   >
-                    <option value="">Select Designation</option>
-                    {designations.map(deg => (
-                      <option key={deg} value={deg}>{deg}</option>
-                    ))}
-                  </select>
-                </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.subjects.includes(subject.id)}
+                      onChange={() => toggleSubject(subject.id)}
+                      className="w-4 h-4 text-primary-500 bg-dark-700 border-gray-600 rounded focus:ring-primary-500"
+                    />
+                    <div className="flex-1">
+                      <span className="text-white font-medium">{subject.name}</span>
+                      <span className="text-gray-400 text-sm ml-2">
+                        ({subject.code} - {subject.department} {subject.year})
+                      </span>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
 
-                <div>
-                  <label className="label">Max Weekly Workload (hours) *</label>
-                  <input
-                    type="number"
-                    className="input-field"
-                    value={formData.maxWorkload}
-                    onChange={(e) => setFormData({ ...formData, maxWorkload: Number(e.target.value) })}
-                    min="1"
-                    max="40"
-                    required
-                  />
-                </div>
-              </div>
+          <div className="flex space-x-3 pt-4">
+            <button type="submit" className="btn-primary flex-1">
+              {editingFaculty ? 'Update Faculty' : 'Add Faculty'}
+            </button>
+            <button
+              type="button"
+              onClick={resetForm}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-              <div>
-                <label className="label">Can Teach Subjects *</label>
-                <div className="max-h-48 overflow-y-auto space-y-2 p-4 glass rounded-lg">
-                  {subjects.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No subjects available. Please add subjects first.</p>
-                  ) : (
-                    subjects.map(subject => (
-                      <label
-                        key={subject.id}
-                        className="flex items-center space-x-3 p-2 hover:bg-white/5 rounded cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.subjects.includes(subject.id)}
-                          onChange={() => toggleSubject(subject.id)}
-                          className="w-4 h-4 text-primary-500 bg-dark-700 border-gray-600 rounded focus:ring-primary-500"
-                        />
-                        <div className="flex-1">
-                          <span className="text-white font-medium">{subject.name}</span>
-                          <span className="text-gray-400 text-sm ml-2">
-                            ({subject.code} - {subject.department} {subject.year})
-                          </span>
-                        </div>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="flex space-x-3 pt-4">
-                <button type="submit" className="btn-primary flex-1">
-                  {editingFaculty ? 'Update Faculty' : 'Add Faculty'}
-                </button>
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
+      {/* NEW: Import Faculty Modal */}
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="Import Faculty from CSV"
+        size="lg"
+      >
+        <ImportFaculty onClose={() => setIsImportModalOpen(false)} />
+      </Modal>
     </div>
   );
 }

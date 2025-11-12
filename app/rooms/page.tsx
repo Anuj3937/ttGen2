@@ -2,15 +2,22 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Edit, Trash2, Building2, Beaker } from 'lucide-react';
+// UPDATED: Import Upload and Modal
+import { Plus, Edit, Trash2, Building2, Beaker, Upload } from 'lucide-react';
 import { useTimetableStore } from '@/lib/store';
 import { Room } from '@/lib/types';
 import toast from 'react-hot-toast';
+import { Modal } from '@/components/ui/Modal';
+import { ImportRooms } from '@/components/ImportRooms';
 
 export default function RoomsPage() {
   const { rooms, addRoom, updateRoom, deleteRoom } = useTimetableStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+
+  // NEW: State for import modal
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  
   const [formData, setFormData] = useState({
     roomNumber: '',
     category: 'CLASSROOM' as 'CLASSROOM' | 'LAB',
@@ -81,15 +88,27 @@ export default function RoomsPage() {
           <h1 className="text-4xl font-bold text-white mb-2">Room Management</h1>
           <p className="text-gray-400">Configure classrooms and laboratories</p>
         </div>
-        <motion.button
-          className="btn-primary flex items-center space-x-2"
-          onClick={() => setIsModalOpen(true)}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <Plus className="w-5 h-5" />
-          <span>Add Room</span>
-        </motion.button>
+        {/* UPDATED: Added Import Button */}
+        <div className="flex gap-4">
+          <motion.button
+            className="btn-secondary flex items-center space-x-2"
+            onClick={() => setIsImportModalOpen(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Upload className="w-5 h-5" />
+            <span>Import from CSV</span>
+          </motion.button>
+          <motion.button
+            className="btn-primary flex items-center space-x-2"
+            onClick={() => setIsModalOpen(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Plus className="w-5 h-5" />
+            <span>Add Room</span>
+          </motion.button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -234,87 +253,90 @@ export default function RoomsPage() {
         </div>
       )}
 
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <motion.div
-            className="glass-dark rounded-2xl p-6 max-w-lg w-full"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <h2 className="text-2xl font-bold text-white mb-6">
-              {editingRoom ? 'Edit Room' : 'Add New Room'}
-            </h2>
+      {/* UPDATED: Refactored to use Modal component */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={resetForm}
+        title={editingRoom ? 'Edit Room' : 'Add New Room'}
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="label">Room Number *</label>
+            <input
+              type="text"
+              className="input-field"
+              value={formData.roomNumber}
+              onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
+              required
+              placeholder="e.g., 504, Lab-A1"
+            />
+          </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="label">Room Number *</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  value={formData.roomNumber}
-                  onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
-                  required
-                  placeholder="e.g., 504, Lab-A1"
-                />
-              </div>
+          <div>
+            <label className="label">Category *</label>
+            <select
+              className="input-field"
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value as 'CLASSROOM' | 'LAB' })}
+              required
+            >
+              <option value="CLASSROOM">Classroom</option>
+              <option value="LAB">Laboratory</option>
+            </select>
+          </div>
 
-              <div>
-                <label className="label">Category *</label>
-                <select
-                  className="input-field"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value as 'CLASSROOM' | 'LAB' })}
-                  required
-                >
-                  <option value="CLASSROOM">Classroom</option>
-                  <option value="LAB">Laboratory</option>
-                </select>
-              </div>
+          <div>
+            <label className="label">Capacity *</label>
+            <input
+              type="number"
+              className="input-field"
+              value={formData.capacity}
+              onChange={(e) => setFormData({ ...formData, capacity: Number(e.target.value) })}
+              min="1"
+              max="200"
+              required
+            />
+          </div>
 
-              <div>
-                <label className="label">Capacity *</label>
-                <input
-                  type="number"
-                  className="input-field"
-                  value={formData.capacity}
-                  onChange={(e) => setFormData({ ...formData, capacity: Number(e.target.value) })}
-                  min="1"
-                  max="200"
-                  required
-                />
-              </div>
+          <div>
+            <label className="label">Department (Optional)</label>
+            <select
+              className="input-field"
+              value={formData.department}
+              onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+            >
+              <option value="">General/Shared</option>
+              {departments.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+          </div>
 
-              <div>
-                <label className="label">Department (Optional)</label>
-                <select
-                  className="input-field"
-                  value={formData.department}
-                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                >
-                  <option value="">General/Shared</option>
-                  {departments.map(dept => (
-                    <option key={dept} value={dept}>{dept}</option>
-                  ))}
-                </select>
-              </div>
+          <div className="flex space-x-3 pt-4">
+            <button type="submit" className="btn-primary flex-1">
+              {editingRoom ? 'Update Room' : 'Add Room'}
+            </button>
+            <button
+              type="button"
+              onClick={resetForm}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-              <div className="flex space-x-3 pt-4">
-                <button type="submit" className="btn-primary flex-1">
-                  {editingRoom ? 'Update Room' : 'Add Room'}
-                </button>
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
+      {/* NEW: Import Rooms Modal */}
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="Import Rooms from CSV"
+        size="lg"
+      >
+        <ImportRooms onClose={() => setIsImportModalOpen(false)} />
+      </Modal>
     </div>
   );
 }
