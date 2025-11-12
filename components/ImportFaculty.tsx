@@ -11,7 +11,6 @@ interface ImportFacultyProps {
   onClose: () => void;
 }
 
-// This interface matches a row in your Faculty_Data_Structure.csv
 interface FacultyCSVRow {
   Faculty_Name: string;
   Faculty_Code: string;
@@ -20,7 +19,7 @@ interface FacultyCSVRow {
 }
 
 export const ImportFaculty: React.FC<ImportFacultyProps> = ({ onClose }) => {
-  const store = useTimetableStore();
+  // We don't need to call the hook here anymore
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -55,8 +54,8 @@ export const ImportFaculty: React.FC<ImportFacultyProps> = ({ onClose }) => {
                 name: facultyName,
                 initials: facultyCode,
                 designation: (row['Designation'] || 'Assistant Professor').trim(),
-                maxWorkload: Number(row['MaxWorkload']) || 20, // Default 20
-                subjects: [], // Subjects must be linked manually
+                maxWorkload: Number(row['MaxWorkload']) || 20,
+                subjects: [],
                 preferences: {},
               };
               newFacultyList.push(newFaculty);
@@ -69,7 +68,6 @@ export const ImportFaculty: React.FC<ImportFacultyProps> = ({ onClose }) => {
              return;
           }
 
-          // --- NEW: Call the batch-import API ---
           const response = await fetch('/api/faculty/batch-import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -82,10 +80,12 @@ export const ImportFaculty: React.FC<ImportFacultyProps> = ({ onClose }) => {
 
           const { importedFaculty } = await response.json();
 
-          // --- NEW: Update the local store state ---
-          store.setState((state) => ({
+          // --- *** THE FIX IS HERE *** ---
+          // Call useTimetableStore.setState directly, not store.setState
+          useTimetableStore.setState((state) => ({
             faculty: [...state.faculty, ...importedFaculty],
           }));
+          // ------------------------------
 
           setIsImporting(false);
           toast.success(`Successfully imported ${importedFaculty.length} faculty members!`, { id: 'import-faculty' });
@@ -105,7 +105,7 @@ export const ImportFaculty: React.FC<ImportFacultyProps> = ({ onClose }) => {
 
   return (
     <div className="space-y-6">
-      {/* File Upload */}
+      {/* ... (Your JSX remains unchanged) ... */}
       <div>
         <label className="label">Upload Faculty Data CSV</label>
         <label
@@ -129,7 +129,6 @@ export const ImportFaculty: React.FC<ImportFacultyProps> = ({ onClose }) => {
         </label>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex space-x-3 pt-4">
         <button
           type="button"

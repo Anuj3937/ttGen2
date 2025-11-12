@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Settings as SettingsIcon, 
@@ -11,7 +11,8 @@ import {
   Sparkles,
   Bell,
   Moon,
-  Sun
+  Sun,
+  Loader2
 } from 'lucide-react';
 import { useEnhancedStore } from '@/lib/enhancedStore';
 import { useTimetableStore } from '@/lib/store';
@@ -30,27 +31,41 @@ export default function SettingsPage() {
     clearAllData,
   } = useEnhancedStore();
 
-  const { subjects, divisions, faculty, rooms } = useTimetableStore();
+  const { subjects, divisions, faculty, rooms, isInitialized, fetchInitialData } = useTimetableStore();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleExport = () => {
-    try {
-      const data = exportAllData();
-      downloadJSON(JSON.parse(data), `timetable-backup-${Date.now()}.json`);
-      toast.success('Data exported successfully!');
-    } catch (error) {
-      toast.error('Export failed');
+  // Fetch data on load to get accurate counts
+  useEffect(() => {
+    if (!isInitialized) {
+      fetchInitialData();
     }
+  }, [isInitialized, fetchInitialData]);
+
+  const handleExport = async () => {
+    setIsLoading(true);
+    toast.loading('Exporting data...', { id: 'export-toast' });
+    try {
+      const data = await exportAllData(); // Now async
+      downloadJSON(data, `timetable-backup-${Date.now()}.json`);
+      toast.success('Data exported successfully!', { id: 'export-toast' });
+    } catch (error: any) {
+      toast.error(`Export failed: ${error.message}`, { id: 'export-toast' });
+    }
+    setIsLoading(false);
   };
 
   const handleImport = async () => {
+    setIsLoading(true);
+    toast.loading('Importing data...', { id: 'import-toast' });
     try {
       const data = await uploadJSON();
-      importAllData(JSON.stringify(data));
-      toast.success('Data imported successfully!');
+      await importAllData(JSON.stringify(data)); // Now async
+      toast.success('Data imported! Reloading...', { id: 'import-toast' });
       window.location.reload();
     } catch (error: any) {
-      toast.error(error.message || 'Import failed');
+      toast.error(error.message || 'Import failed', { id: 'import-toast' });
     }
+    setIsLoading(false);
   };
 
   const handleClearAll = () => {
@@ -59,8 +74,9 @@ export default function SettingsPage() {
         'Are you sure you want to clear all data? This action cannot be undone.'
       )
     ) {
+      // This only clears the local state. A real clear would call an API.
       clearAllData();
-      toast.success('All data cleared');
+      toast.success('Local data cleared. Reloading...');
       window.location.reload();
     }
   };
@@ -73,7 +89,12 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
+      {isLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Loader2 className="w-12 h-12 text-primary-400 animate-spin" />
+        </div>
+      )}
       <div>
         <h1 className="text-4xl font-bold text-white mb-2">Settings</h1>
         <p className="text-gray-400">Manage your application preferences and data</p>
@@ -93,6 +114,7 @@ export default function SettingsPage() {
 
       {/* Preferences */}
       <div className="card">
+        {/* ... (Preferences JSX is unchanged) ... */}
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center space-x-2">
           <SettingsIcon className="w-6 h-6 text-primary-400" />
           <span>Preferences</span>
@@ -236,18 +258,19 @@ export default function SettingsPage() {
 
       {/* About */}
       <div className="card">
+        {/* ... (About section JSX is unchanged) ... */}
         <h2 className="text-2xl font-bold text-white mb-4">About</h2>
         <div className="space-y-2 text-gray-400">
           <p>
-            <span className="font-semibold text-white">Version:</span> 1.0.0
+            <span className="font-semibold text-white">Version:</span> 2.0.0 (Firestore)
           </p>
           <p>
             <span className="font-semibold text-white">Built with:</span> Next.js 14,
             TypeScript, Tailwind CSS, Framer Motion
           </p>
           <p>
-            <span className="font-semibold text-white">Features:</span> AI-powered
-            timetable generation, multi-view displays, conflict resolution
+            <span className="font-semibold text-white">Features:</span> Manual
+            timetable plotting, multi-view displays, workload tracking
           </p>
         </div>
       </div>

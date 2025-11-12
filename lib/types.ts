@@ -61,6 +61,7 @@ export interface TimeSlot {
 
 export interface TimetableEntry {
   id: string;
+  allocationId: string; 
   day: string;
   startTime: string;
   endTime: string;
@@ -91,6 +92,16 @@ export interface GeneratedTimetable {
   departmentLoads: DepartmentLoad[];
   remainingFaculty: Faculty[];
   vacantRooms: { room: Room; vacantSlots: TimeSlot[] }[];
+}
+
+export interface SubjectAllocation {
+  id: string;
+  subjectId: string;
+  facultyId: string;
+  divisionId: string;
+  batchId?: string; // Only for practicals
+  type: 'THEORY' | 'PRACTICAL';
+  hours: number; // e.g., 2 for a practical, 2 for a theory
 }
 
 export const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

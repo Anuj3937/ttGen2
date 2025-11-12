@@ -11,16 +11,15 @@ interface ImportRoomsProps {
   onClose: () => void;
 }
 
-// This interface matches a row in your Room_Allocation_Structure.csv
 interface RoomCSVRow {
   RoomNumber: string;
   Category: string;
   Capacity: string;
-  Department?: string; // Department is optional
+  Department?: string;
 }
 
 export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
-  const store = useTimetableStore();
+  // We don't need to call the hook here anymore
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -50,17 +49,16 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
             const category = (row['Category'] || '').trim().toUpperCase();
             if (category !== 'CLASSROOM' && category !== 'LAB') {
               console.warn('Skipping invalid row, category must be CLASSROOM or LAB:', row);
-              continue; // Skip invalid row
+              continue;
             }
 
             const newRoom: Omit<Room, 'id'> = {
               roomNumber: (row['RoomNumber'] || '').trim(),
               category: category as 'CLASSROOM' | 'LAB',
-              capacity: Number(row['Capacity']) || (category === 'LAB' ? 20 : 60), // Default capacity
-              department: (row['Department'] || '').trim() || undefined, // Set to undefined if empty
+              capacity: Number(row['Capacity']) || (category === 'LAB' ? 20 : 60),
+              department: (row['Department'] || '').trim() || undefined,
             };
 
-            // Basic validation
             if (newRoom.roomNumber && newRoom.capacity > 0) {
               newRooms.push(newRoom);
             }
@@ -72,7 +70,6 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
             return;
           }
           
-          // --- NEW: Call the batch-import API ---
           const response = await fetch('/api/rooms/batch-import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -85,10 +82,12 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
 
           const { importedRooms } = await response.json();
           
-          // --- NEW: Update the local store state ---
-          store.setState((state) => ({
+          // --- *** THE FIX IS HERE *** ---
+          // Call useTimetableStore.setState directly, not store.setState
+          useTimetableStore.setState((state) => ({
             rooms: [...state.rooms, ...importedRooms],
           }));
+          // ------------------------------
 
           setIsImporting(false);
           toast.success(`Successfully imported ${importedRooms.length} rooms!`, { id: 'import-room' });
@@ -108,7 +107,7 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
 
   return (
     <div className="space-y-6">
-      {/* File Upload */}
+      {/* ... (Your JSX remains unchanged) ... */}
       <div>
         <label className="label">Upload Rooms Data CSV</label>
         <label
@@ -121,7 +120,7 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
           </span>
           <p className="text-xs text-gray-500 mt-1">
             Columns: 'RoomNumber', 'Category', 'Capacity', 'Department' (optional)
-          </D>
+          </p>
           <input
             id="file-upload-room"
             type="file"
@@ -132,7 +131,6 @@ export const ImportRooms: React.FC<ImportRoomsProps> = ({ onClose }) => {
         </label>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex space-x-3 pt-4">
         <button
           type="button"

@@ -11,7 +11,6 @@ interface ImportDivisionsProps {
   onClose: () => void;
 }
 
-// This interface matches a row in your Department_Batch_Structure.csv
 interface DivisionCSVRow {
   Department: string;
   Year: string;
@@ -21,7 +20,7 @@ interface DivisionCSVRow {
 }
 
 export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => {
-  const store = useTimetableStore();
+  // We don't need to call the hook here anymore
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -45,14 +44,13 @@ export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => 
       skipEmptyLines: true,
       complete: async (results) => {
         try {
-          // Use a Map to group batches into divisions
           const divisionMap = new Map<string, Omit<Division, 'id'>>();
           
           for (const row of results.data as DivisionCSVRow[]) {
             const dept = (row['Department'] || '').trim().toUpperCase();
             const year = (row['Year'] || '').trim().toUpperCase();
             const divName = (row['DivisionName'] || '').trim().toUpperCase();
-            const batchNumber = (row['BatchCount'] || '').trim(); // This is '1', '2', '3'
+            const batchNumber = (row['BatchCount'] || '').trim();
             const studentCount = Number(row['StudentsPerBatch']) || 0;
 
             if (!dept || !year || !divName || !batchNumber || studentCount === 0) {
@@ -61,27 +59,22 @@ export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => 
             }
 
             const divisionKey = `${dept}-${year}-${divName}`;
-
-            // Create the new batch
             const newBatch: Batch = {
               id: `batch-${divName}${batchNumber}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-              name: `${divName}${batchNumber}`, // e.g., A1, A2, A3
+              name: `${divName}${batchNumber}`,
               studentCount: studentCount,
               electiveChoices: {},
               minorStudents: [],
             };
 
-            // Check if we already started this division
             if (divisionMap.has(divisionKey)) {
-              // Add batch to existing division
               divisionMap.get(divisionKey)!.batches.push(newBatch);
             } else {
-              // Create a new division
               const newDivision: Omit<Division, 'id'> = {
                 department: dept,
                 year: year,
                 name: divName,
-                batches: [newBatch], // Add the first batch
+                batches: [newBatch],
               };
               divisionMap.set(divisionKey, newDivision);
             }
@@ -95,7 +88,6 @@ export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => 
             return;
           }
 
-          // --- NEW: Call the batch-import API ---
           const response = await fetch('/api/divisions/batch-import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -108,10 +100,12 @@ export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => 
 
           const { importedDivisions } = await response.json();
           
-          // --- NEW: Update the local store state ---
-          store.setState((state) => ({
+          // --- *** THE FIX IS HERE *** ---
+          // Call useTimetableStore.setState directly, not store.setState
+          useTimetableStore.setState((state) => ({
             divisions: [...state.divisions, ...importedDivisions],
           }));
+          // ------------------------------
           
           setIsImporting(false);
           toast.success(`Successfully imported ${importedDivisions.length} divisions!`, { id: 'import-div' });
@@ -131,7 +125,7 @@ export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => 
 
   return (
     <div className="space-y-6">
-      {/* File Upload */}
+      {/* ... (Your JSX remains unchanged) ... */}
       <div>
         <label className="label">Upload Divisions Structure CSV</label>
         <label
@@ -155,7 +149,6 @@ export const ImportDivisions: React.FC<ImportDivisionsProps> = ({ onClose }) => 
         </label>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex space-x-3 pt-4">
         <button
           type="button"

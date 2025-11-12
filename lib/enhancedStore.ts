@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { useTimetableStore } from './store';
+import { useTimetableStore } from './store'; // We still need this for clearAll
 
 interface AppSettings {
   theme: 'light' | 'dark';
@@ -11,14 +11,16 @@ interface AppSettings {
 
 interface EnhancedStore extends AppSettings {
   updateSettings: (settings: Partial<AppSettings>) => void;
-  exportAllData: () => string;
-  importAllData: (data: string) => void;
+  // These are now async
+  exportAllData: () => Promise<any>; 
+  importAllData: (data: string) => Promise<void>;
   clearAllData: () => void;
 }
 
 export const useEnhancedStore = create<EnhancedStore>()(
   persist(
     (set, get) => ({
+      // Keep settings in localStorage
       theme: 'dark',
       autoSave: true,
       aiAssistEnabled: true,
@@ -26,74 +28,61 @@ export const useEnhancedStore = create<EnhancedStore>()(
 
       updateSettings: (settings) => set(settings),
 
-      exportAllData: () => {
-        const timetableData = useTimetableStore.getState();
+      // REFACTORED exportAllData
+      exportAllData: async () => {
+        const response = await fetch('/api/data/export');
+        if (!response.ok) {
+          throw new Error('Failed to export data from server.');
+        }
+        const exportData = await response.json();
+        
+        // We still add the local settings to the file
         const enhancedData = get();
-
-        const exportData = {
-          version: '1.0',
-          timestamp: new Date().toISOString(),
-          timetableData: {
-            subjects: timetableData.subjects,
-            divisions: timetableData.divisions,
-            faculty: timetableData.faculty,
-            rooms: timetableData.rooms,
-            generatedTimetable: timetableData.generatedTimetable,
-          },
-          settings: {
-            theme: enhancedData.theme,
-            autoSave: enhancedData.autoSave,
-            aiAssistEnabled: enhancedData.aiAssistEnabled,
-            notificationsEnabled: enhancedData.notificationsEnabled,
-          },
+        exportData.settings = {
+          theme: enhancedData.theme,
+          autoSave: enhancedData.autoSave,
+          aiAssistEnabled: enhancedData.aiAssistEnabled,
+          notificationsEnabled: enhancedData.notificationsEnabled,
         };
 
-        return JSON.stringify(exportData, null, 2);
+        return exportData;
       },
 
-      importAllData: (data) => {
+      // REFACTORED importAllData
+      importAllData: async (data) => {
         try {
           const parsed = JSON.parse(data);
 
-          if (parsed.timetableData) {
-            const timetableStore = useTimetableStore.getState();
-            
-            // Import subjects
-            parsed.timetableData.subjects?.forEach((subject: any) => {
-              timetableStore.addSubject(subject);
+          if (parsed.data) {
+            // Send the data portion to the API to be imported
+            const response = await fetch('/api/data/import', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(parsed),
             });
 
-            // Import divisions
-            parsed.timetableData.divisions?.forEach((division: any) => {
-              timetableStore.addDivision(division);
-            });
-
-            // Import faculty
-            parsed.timetableData.faculty?.forEach((faculty: any) => {
-              timetableStore.addFaculty(faculty);
-            });
-
-            // Import rooms
-            parsed.timetableData.rooms?.forEach((room: any) => {
-              timetableStore.addRoom(room);
-            });
-
-            // Import generated timetable
-            if (parsed.timetableData.generatedTimetable) {
-              timetableStore.setGeneratedTimetable(parsed.timetableData.generatedTimetable);
+            if (!response.ok) {
+              const { error } = await response.json();
+              throw new Error(error || 'Import failed on server.');
             }
           }
 
           if (parsed.settings) {
             set(parsed.settings);
           }
-        } catch (error) {
+          
+          // Clear local store and force re-fetch
+          useTimetableStore.getState().clearAll(); 
+
+        } catch (error: any) {
           console.error('Import error:', error);
-          throw new Error('Invalid import data');
+          throw new Error(error.message || 'Invalid import data');
         }
       },
 
       clearAllData: () => {
+        // This should also call an API to clear Firestore data
+        // For now, it just clears the local store and settings
         useTimetableStore.getState().clearAll();
         set({
           theme: 'dark',
@@ -104,8 +93,14 @@ export const useEnhancedStore = create<EnhancedStore>()(
       },
     }),
     {
-      name: 'enhanced-settings',
+      name: 'enhanced-settings', // Only settings are persisted here now
       storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({ // Only persist settings, not functions
+        theme: state.theme,
+        autoSave: state.autoSave,
+        aiAssistEnabled: state.aiAssistEnabled,
+        notificationsEnabled: state.notificationsEnabled,
+      }),
     }
   )
 );

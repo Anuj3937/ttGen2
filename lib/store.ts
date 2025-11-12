@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { Subject, Division, Faculty, Room, GeneratedTimetable, TimetableEntry } from './types';
+import { Subject, Division, Faculty, Room, GeneratedTimetable, TimetableEntry, SubjectAllocation } from './types';
 import toast from 'react-hot-toast';
 
-// Define a new state to track loading
 interface AppState {
   isLoading: boolean;
   isInitialized: boolean;
@@ -14,7 +13,9 @@ interface TimetableStore extends AppState {
   divisions: Division[];
   faculty: Faculty[];
   rooms: Room[];
-  generatedTimetable: GeneratedTimetable | null;
+  allocations: SubjectAllocation[];
+  timetable: TimetableEntry[]; // The final scheduled entries
+  generatedTimetable: GeneratedTimetable | null; // Deprecated, but kept for now
   
   // Subject actions (async)
   addSubject: (subject: Omit<Subject, 'id'>) => Promise<void>;
@@ -31,17 +32,25 @@ interface TimetableStore extends AppState {
   updateFaculty: (id: string, faculty: Partial<Faculty>) => Promise<void>;
   deleteFaculty: (id: string) => Promise<void>;
   
-  // Room actions (now async)
+  // Room actions (async)
   addRoom: (room: Omit<Room, 'id'>) => Promise<void>;
   updateRoom: (id: string, room: Partial<Room>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
+
+  // Allocation actions
+  createAllocation: (allocation: Omit<SubjectAllocation, 'id'>) => Promise<boolean>;
+  deleteAllocation: (allocation: SubjectAllocation) => Promise<boolean>;
   
   // Timetable actions
+  createTimetableEntry: (entry: Omit<TimetableEntry, 'id'>) => Promise<boolean>;
+  deleteTimetableEntry: (id: string) => Promise<boolean>;
+  
+  // Deprecated actions
   setGeneratedTimetable: (timetable: GeneratedTimetable) => void;
   updateTimetableEntry: (entryId: string, updates: Partial<TimetableEntry>) => void;
   
   // Utility
-  clearAll: () => void; // This will need to be updated to clear Firestore
+  clearAll: () => void; 
 }
 
 export const useTimetableStore = create<TimetableStore>()(
@@ -50,30 +59,26 @@ export const useTimetableStore = create<TimetableStore>()(
       divisions: [],
       faculty: [],
       rooms: [],
-      generatedTimetable: null,
+      allocations: [],
+      timetable: [], 
+      generatedTimetable: null, // Keep for old `view` page logic if needed
       isLoading: false,
       isInitialized: false,
 
-      // --- FINALIZED INITIALIZATION ---
       fetchInitialData: async () => {
         if (get().isInitialized) return; 
-        
         set({ isLoading: true });
         try {
-          const [subjectsRes, divisionsRes, facultyRes, roomsRes] = await Promise.all([
+          const [subjectsRes, divisionsRes, facultyRes, roomsRes, allocationsRes, timetableRes] = await Promise.all([
              fetch('/api/subjects'),
              fetch('/api/divisions'),
              fetch('/api/faculty'),
              fetch('/api/rooms'),
+             fetch('/api/allocations'),
+             fetch('/api/timetable'),
           ]);
 
-          if (!subjectsRes.ok || !divisionsRes.ok || !facultyRes.ok || !roomsRes.ok) {
-            console.error('Fetch errors:', {
-              subjects: subjectsRes.status,
-              divisions: divisionsRes.status,
-              faculty: facultyRes.status,
-              rooms: roomsRes.status,
-            });
+          if (!subjectsRes.ok || !divisionsRes.ok || !facultyRes.ok || !roomsRes.ok || !allocationsRes.ok || !timetableRes.ok) {
             throw new Error('Failed to fetch initial data');
           }
 
@@ -81,12 +86,16 @@ export const useTimetableStore = create<TimetableStore>()(
           const divisions = await divisionsRes.json(); 
           const faculty = await facultyRes.json();
           const rooms = await roomsRes.json();
+          const allocations = await allocationsRes.json();
+          const timetable = await timetableRes.json();
 
           set({ 
             subjects: subjects || [],
             divisions: divisions || [], 
             faculty: faculty || [],
             rooms: rooms || [],
+            allocations: allocations || [],
+            timetable: timetable || [],
             isLoading: false, 
             isInitialized: true 
           });
@@ -99,7 +108,7 @@ export const useTimetableStore = create<TimetableStore>()(
       },
       
       // --- SUBJECT ACTIONS ---
-      addSubject: async (subjectData) => {
+      addSubject: async (subjectData) => { 
         try {
           const response = await fetch('/api/subjects', {
             method: 'POST',
@@ -115,7 +124,7 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to add subject');
         }
       },
-      updateSubject: async (id, updates) => {
+      updateSubject: async (id, updates) => { 
          try {
           const response = await fetch(`/api/subjects/${id}`, {
             method: 'PUT',
@@ -133,7 +142,7 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to update subject');
         }
       },
-      deleteSubject: async (id) => {
+      deleteSubject: async (id) => { 
         try {
           const response = await fetch(`/api/subjects/${id}`, { method: 'DELETE' });
           if (!response.ok) throw new Error('Failed to delete subject');
@@ -146,7 +155,7 @@ export const useTimetableStore = create<TimetableStore>()(
       },
       
       // --- DIVISION ACTIONS ---
-      addDivision: async (divisionData) => {
+      addDivision: async (divisionData) => { 
         try {
           const response = await fetch('/api/divisions', {
             method: 'POST',
@@ -162,7 +171,7 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to add division');
         }
       },
-      updateDivision: async (id, updates) => {
+      updateDivision: async (id, updates) => { 
          try {
           const response = await fetch(`/api/divisions/${id}`, {
             method: 'PUT',
@@ -180,7 +189,7 @@ export const useTimetableStore = create<TimetableStore>()(
           throw error;
         }
       },
-      deleteDivision: async (id) => {
+      deleteDivision: async (id) => { 
         try {
           const response = await fetch(`/api/divisions/${id}`, { method: 'DELETE' });
           if (!response.ok) throw new Error('Failed to delete division');
@@ -193,7 +202,7 @@ export const useTimetableStore = create<TimetableStore>()(
       },
       
       // --- FACULTY ACTIONS ---
-      addFaculty: async (facultyData) => {
+      addFaculty: async (facultyData) => { 
         try {
           const response = await fetch('/api/faculty', {
             method: 'POST',
@@ -209,7 +218,7 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to add faculty');
         }
       },
-      updateFaculty: async (id, updates) => {
+      updateFaculty: async (id, updates) => { 
          try {
           const response = await fetch(`/api/faculty/${id}`, {
             method: 'PUT',
@@ -227,7 +236,7 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to update faculty');
         }
       },
-      deleteFaculty: async (id) => {
+      deleteFaculty: async (id) => { 
         try {
           const response = await fetch(`/api/faculty/${id}`, { method: 'DELETE' });
           if (!response.ok) throw new Error('Failed to delete faculty');
@@ -238,9 +247,9 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to delete faculty');
         }
       },
-      
-      // --- NEW REFACTORED ROOM ACTIONS ---
-      addRoom: async (roomData) => {
+
+      // --- ROOM ACTIONS ---
+      addRoom: async (roomData) => { 
         try {
           const response = await fetch('/api/rooms', {
             method: 'POST',
@@ -256,7 +265,7 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to add room');
         }
       },
-      updateRoom: async (id, updates) => {
+      updateRoom: async (id, updates) => { 
          try {
           const response = await fetch(`/api/rooms/${id}`, {
             method: 'PUT',
@@ -274,7 +283,7 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to update room');
         }
       },
-      deleteRoom: async (id) => {
+      deleteRoom: async (id) => { 
         try {
           const response = await fetch(`/api/rooms/${id}`, { method: 'DELETE' });
           if (!response.ok) throw new Error('Failed to delete room');
@@ -285,45 +294,110 @@ export const useTimetableStore = create<TimetableStore>()(
           toast.error('Failed to delete room');
         }
       },
+
+      // --- ALLOCATION ACTIONS ---
+      createAllocation: async (allocationData) => {
+        try {
+          const response = await fetch('/api/allocations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(allocationData),
+          });
+          if (!response.ok) { const { error } = await response.json(); throw new Error(error || 'Failed to create allocation'); }
+          const newAllocation = await response.json();
+          set((state) => ({
+            allocations: [...state.allocations, newAllocation],
+            faculty: state.faculty.map(f => f.id === newAllocation.facultyId ? { ...f, currentWorkload: (f.currentWorkload || 0) + newAllocation.hours } : f)
+          }));
+          toast.success('Faculty mapped successfully!');
+          return true;
+        } catch (error: any) {
+          console.error(error);
+          toast.error(error.message);
+          return false;
+        }
+      },
+      deleteAllocation: async (allocation) => {
+        try {
+          const response = await fetch(`/api/allocations/${allocation.id}`, { method: 'DELETE' });
+          if (!response.ok) { const { error } = await response.json(); throw new Error(error || 'Failed to delete allocation'); }
+          set((state) => ({
+            allocations: state.allocations.filter(a => a.id !== allocation.id),
+            faculty: state.faculty.map(f => f.id === allocation.facultyId ? { ...f, currentWorkload: Math.max(0, (f.currentWorkload || 0) - allocation.hours) } : f)
+          }));
+          toast.success('Allocation removed!');
+          return true;
+        } catch (error: any) {
+          console.error(error);
+          toast.error(error.message);
+          return false;
+        }
+      },
       
-      // --- TIMETABLE (still client-side) ---
-      setGeneratedTimetable: (timetable) => set({ generatedTimetable: timetable }),
-      
-      updateTimetableEntry: (entryId, updates) => set((state) => {
-        if (!state.generatedTimetable) return state;
-        const updateEntries = (entries: TimetableEntry[]) =>
-          entries.map(e => e.id === entryId ? { ...e, ...updates } : e);
-        
-        return {
-          generatedTimetable: {
-            ...state.generatedTimetable,
-            divisionWise: Object.fromEntries(
-              Object.entries(state.generatedTimetable.divisionWise).map(
-                ([key, entries]) => [key, updateEntries(entries)]
-              )
-            ),
-            facultyWise: Object.fromEntries(
-              Object.entries(state.generatedTimetable.facultyWise).map(
-                ([key, entries]) => [key, updateEntries(entries)]
-              )
-            ),
-            roomWise: Object.fromEntries(
-              Object.entries(state.generatedTimetable.roomWise).map(
-                ([key, entries]) => [key, updateEntries(entries)]
-              )
-            ),
+      // --- TIMETABLE ACTIONS ---
+      createTimetableEntry: async (entryData) => {
+        try {
+          const response = await fetch('/api/timetable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(entryData),
+          });
+          if (!response.ok) {
+            const { error } = await response.json();
+            throw new Error(error || 'Failed to create entry');
           }
-        };
-      }),
+          const newEntry = await response.json();
+          set((state) => ({
+            timetable: [...state.timetable, newEntry]
+          }));
+          toast.success('Slot scheduled!');
+          return true;
+        } catch (error: any) {
+          console.error(error);
+          toast.error(error.message, { duration: 4000 });
+          return false;
+        }
+      },
+      deleteTimetableEntry: async (id) => {
+         try {
+          const response = await fetch(`/api/timetable/${id}`, { method: 'DELETE' });
+          if (!response.ok) {
+            const { error } = await response.json();
+            throw new Error(error || 'Failed to delete entry');
+          }
+          set((state) => ({
+            timetable: state.timetable.filter(e => e.id !== id)
+          }));
+          toast.success('Slot unscheduled!');
+          return true;
+        } catch (error: any) {
+          console.error(error);
+          toast.error(error.message);
+          return false;
+        }
+      },
       
-      // TODO: This should call an API to clear collections in Firestore
-      clearAll: () => set({
-        subjects: [],
-        divisions: [],
-        faculty: [],
-        rooms: [],
-        generatedTimetable: null,
-        isInitialized: true, // Reset to re-fetch
-      }),
+      // --- DEPRECATED ---
+      setGeneratedTimetable: (timetable) => set({ generatedTimetable: timetable }),
+      updateTimetableEntry: (entryId, updates) => { 
+        console.warn('updateTimetableEntry is deprecated');
+      },
+      
+      // --- UTILITY ---
+      clearAll: () => {
+        // TODO: This should call an API to clear collections in Firestore
+        set({
+          subjects: [],
+          divisions: [],
+          faculty: [],
+          rooms: [],
+          allocations: [],
+          timetable: [],
+          generatedTimetable: null,
+          isInitialized: false, 
+        });
+        toast.success('Local data cleared. Re-fetching from server...');
+        get().fetchInitialData();
+      },
     })
 );

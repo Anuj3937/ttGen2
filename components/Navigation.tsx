@@ -13,6 +13,8 @@ import {
   Eye,
   Menu,
   X,
+  Map, 
+  Calendar // <-- Import New Icon
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -22,7 +24,8 @@ const navItems = [
   { href: '/divisions', label: 'Divisions', icon: Users },
   { href: '/faculty', label: 'Faculty', icon: UserCircle },
   { href: '/rooms', label: 'Rooms', icon: Building2 },
-  { href: '/generate', label: 'Generate', icon: Sparkles },
+  { href: '/plot', label: 'Plot Load', icon: Map }, // <-- RENAMED
+  { href: '/schedule', label: 'Schedule', icon: Calendar }, // <-- NEW
   { href: '/view', label: 'View Timetable', icon: Eye },
   { href: '/settings', label: 'Settings', icon: Settings },
 

@@ -39,8 +39,7 @@ interface ImportSubjectsProps {
 }
 
 export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
-  // Get the full store state, not just addSubject
-  const store = useTimetableStore(); 
+  // We don't need to call the hook here anymore
   const [file, setFile] = useState<File | null>(null);
   const [semesterType, setSemesterType] = useState<SemesterType>('ODD');
   const [isImporting, setIsImporting] = useState(false);
@@ -69,7 +68,7 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
       skipEmptyLines: true,
       complete: async (results) => {
         try {
-          const newSubjects: Omit<Subject, 'id'>[] = []; // We don't have IDs yet
+          const newSubjects: Omit<Subject, 'id'>[] = []; 
 
           for (const row of results.data as any[]) {
             const semester = (row['Semester'] || '').trim();
@@ -78,7 +77,6 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
               const subjectType = inferSubjectType(row);
               
               const newSubject: Omit<Subject, 'id'> = {
-                // No ID here
                 name: row['Course Name'],
                 code: generateCode(row['Course Name']), 
                 department: row['Department'],
@@ -91,7 +89,6 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
                 electives: (subjectType === 'DLO' || subjectType === 'ILO' || subjectType === 'MINOR') ? [] : undefined,
               };
 
-              // Basic validation
               if (newSubject.name && newSubject.department && newSubject.year && newSubject.semester) {
                 newSubjects.push(newSubject);
               }
@@ -104,7 +101,6 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
             return;
           }
 
-          // --- NEW: Call the batch-import API ---
           const response = await fetch('/api/subjects/batch-import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -117,10 +113,12 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
 
           const { importedSubjects } = await response.json();
           
-          // --- NEW: Update the local store state with the new data from DB ---
-          store.setState((state) => ({
+          // --- *** THE FIX IS HERE *** ---
+          // Call useTimetableStore.setState directly, not store.setState
+          useTimetableStore.setState((state) => ({
             subjects: [...state.subjects, ...importedSubjects],
           }));
+          // ------------------------------
           
           setIsImporting(false);
           toast.success(`Successfully imported ${importedSubjects.length} subjects!`, { id: 'import' });
@@ -140,7 +138,7 @@ export const ImportSubjects: React.FC<ImportSubjectsProps> = ({ onClose }) => {
 
   return (
     <div className="space-y-6">
-      {/* ... (Your JSX for semester selector and file upload remains unchanged) ... */}
+      {/* ... (Your JSX remains unchanged) ... */}
       <div>
         <label className="label">Select Semester Type to Import</label>
         <div className="flex gap-4">
