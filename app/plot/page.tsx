@@ -7,9 +7,8 @@ import { Subject, Faculty, Division, SubjectAllocation, Batch } from '@/lib/type
 import { Loader2, User, BookOpen, Users, Check, X, ArrowRight, AlertTriangle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// --- Reusable Components ---
+// --- Reusable Components (Unchanged) ---
 
-// Column Component
 const Column = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <motion.div 
     className="flex-1 min-w-[300px] card"
@@ -21,7 +20,6 @@ const Column = ({ title, children }: { title: string, children: React.ReactNode 
   </motion.div>
 );
 
-// ListItem Component
 const ListItem = ({ 
   title, 
   subtitle, 
@@ -63,7 +61,16 @@ const ListItem = ({
 // --- Main Page Component ---
 export default function PlotPage() {
   const store = useTimetableStore();
-  const { isInitialized, fetchInitialData, subjects, divisions, faculty, allocations } = store;
+  const { 
+    isInitialized, 
+    fetchInitialData, 
+    subjects, 
+    divisions, 
+    faculty, 
+    allocations,
+    createAllocation,
+    deleteAllocation
+  } = store;
 
   // --- Local UI State ---
   const [selectedDeptYear, setSelectedDeptYear] = useState<string | null>(null);
@@ -83,22 +90,19 @@ export default function PlotPage() {
     }
   }, [isInitialized, fetchInitialData]);
 
-  // --- Memoized Selectors (for performance) ---
+  // --- Memoized Selectors (Unchanged) ---
 
-  // Get unique "Department-Year" pairs (e.g., "CE-SE")
   const departmentYears = useMemo(() => {
     const pairs = new Set(divisions.map(d => `${d.department}-${d.year}`));
-    return Array.from(pairs);
+    return Array.from(pairs).sort();
   }, [divisions]);
 
-  // Get subjects for the selected department-year
   const subjectsInDept = useMemo(() => {
     if (!selectedDeptYear) return [];
     const [dept, year] = selectedDeptYear.split('-');
     return subjects.filter(s => s.department === dept && s.year === year);
   }, [selectedDeptYear, subjects]);
 
-  // Get divisions and batches for the selected subject
   const divisionsForSubject = useMemo(() => {
     if (!selectedSubject) return [];
     return divisions.filter(d => 
@@ -106,31 +110,35 @@ export default function PlotPage() {
     );
   }, [selectedSubject, divisions]);
 
-  // Get eligible faculty for the selected subject
   const eligibleFaculty = useMemo(() => {
     if (!selectedSubject) return [];
     return faculty.filter(f => 
       f.subjects.includes(selectedSubject.id) &&
       f.currentWorkload < f.maxWorkload
-    );
+    ).sort((a,b) => (b.maxWorkload - b.currentWorkload) - (a.maxWorkload - a.currentWorkload)); // Show faculty with most hours first
   }, [selectedSubject, faculty]);
 
-  // --- Load Calculation Logic ---
-  const { totalLoad, assignedLoad } = useMemo(() => {
-    if (!selectedSubject) return { totalLoad: { theory: 0, practical: 0 }, assignedLoad: { theory: 0, practical: 0 }};
+  
+  // --- *** REFACTORED LOAD CALCULATION (THE FIX) *** ---
+
+  // 1. Create a reusable helper function
+  const getSubjectLoad = (subject: Subject | null) => {
+    if (!subject) {
+      return { totalLoad: { theory: 0, practical: 0 }, assignedLoad: { theory: 0, practical: 0 }};
+    }
 
     const relevantDivisions = divisions.filter(d => 
-      d.department === selectedSubject.department && d.year === selectedSubject.year
+      d.department === subject.department && d.year === subject.year
     );
     const numDivisions = relevantDivisions.length;
     const numBatches = relevantDivisions.reduce((sum, div) => sum + div.batches.length, 0);
 
     const totalLoad = {
-      theory: selectedSubject.theoryHours * numDivisions,
-      practical: selectedSubject.practicalHours * numBatches
+      theory: subject.theoryHours * numDivisions,
+      practical: subject.practicalHours * numBatches
     };
 
-    const assignedAllocations = allocations.filter(a => a.subjectId === selectedSubject.id);
+    const assignedAllocations = allocations.filter(a => a.subjectId === subject.id);
     const assignedLoad = {
       theory: assignedAllocations
         .filter(a => a.type === 'THEORY')
@@ -141,9 +149,17 @@ export default function PlotPage() {
     };
 
     return { totalLoad, assignedLoad };
+  };
+
+  // 2. Use the helper function for the "Selected Subject" load (Column 2)
+  const { totalLoad, assignedLoad } = useMemo(() => {
+    return getSubjectLoad(selectedSubject);
   }, [selectedSubject, divisions, allocations]);
 
-  // --- UI Event Handlers ---
+  // --- (End of Fix) ---
+
+
+  // --- UI Event Handlers (Unchanged) ---
 
   const handleSelectDeptYear = (key: string) => {
     setSelectedDeptYear(key);
@@ -187,7 +203,7 @@ export default function PlotPage() {
     );
   };
 
-  // --- CORE LOGIC: Handle Mapping ---
+  // --- CORE LOGIC: Handle Mapping (Unchanged) ---
   const handleMapFaculty = async () => {
     if (!selectedSubject || !selectedFaculty) return;
     setIsSubmitting(true);
@@ -224,7 +240,6 @@ export default function PlotPage() {
       });
     }
 
-    // Workload check
     const remainingWorkload = selectedFaculty.maxWorkload - selectedFaculty.currentWorkload;
     if (totalHoursToAssign > remainingWorkload) {
       toast.error(`Cannot assign ${totalHoursToAssign}h. Faculty only has ${remainingWorkload}h remaining.`);
@@ -232,10 +247,9 @@ export default function PlotPage() {
       return;
     }
 
-    // Create all allocations
     let allSucceeded = true;
     for (const alloc of allocationsToCreate) {
-      const success = await store.createAllocation(alloc);
+      const success = await createAllocation(alloc);
       if (!success) allSucceeded = false;
     }
 
@@ -249,8 +263,11 @@ export default function PlotPage() {
   };
 
   const handleUnmap = async (allocation: SubjectAllocation) => {
-    if (confirm(`Remove ${allocations.find(a => a.id === allocation.id) ? (subjects.find(s => s.id === allocation.subjectId)?.code) : ''} from ${faculty.find(f => f.id === allocation.facultyId)?.name}?`)) {
-      await store.deleteAllocation(allocation);
+    const allocSubject = subjects.find(s => s.id === allocation.subjectId);
+    const allocFaculty = faculty.find(f => f.id === allocation.facultyId);
+    
+    if (confirm(`Remove ${allocSubject?.code} from ${allocFaculty?.name}?`)) {
+      await deleteAllocation(allocation);
     }
   };
 
@@ -266,6 +283,7 @@ export default function PlotPage() {
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
+      
       {/* --- COLUMN 1: Department & Subjects --- */}
       <Column title="1. Select Subject">
         <div className="space-y-2">
@@ -284,31 +302,31 @@ export default function PlotPage() {
         </div>
 
         {selectedDeptYear && (
-          <div className="pt-6 mt-6 border-t border-white/10 space-y-2">
+          <div className="pt-6 mt-6 border-t border-white/10 space-y-2 max-h-[60vh] overflow-y-auto">
             {subjectsInDept.length === 0 && (
               <p className="text-gray-500">No subjects found for {selectedDeptYear}.</p>
             )}
+            
+            {/* --- *** THIS IS THE FIXED MAP LOOP *** --- */}
             {subjectsInDept.map(subject => {
-              const { totalLoad, assignedLoad } = (selectedSubject?.id === subject.id) 
-                ? { totalLoad, assignedLoad } 
-                : { 
-                    totalLoad: { theory: 0, practical: 0 }, 
-                    assignedLoad: { theory: 0, practical: 0 } 
-                  };
+              // 1. Calculate load for *this* subject in the loop
+              const { totalLoad: subjTotal, assignedLoad: subjAssigned } = getSubjectLoad(subject);
               
-              const isTheoryDone = assignedLoad.theory >= totalLoad.theory;
-              const isPracticalDone = assignedLoad.practical >= totalLoad.practical;
+              // 2. Determine badge
+              const isTheoryDone = subjTotal.theory === 0 || subjAssigned.theory >= subjTotal.theory;
+              const isPracticalDone = subjTotal.practical === 0 || subjAssigned.practical >= subjTotal.practical;
               
               let badge = '';
               let badgeColor = '';
               if (isTheoryDone && isPracticalDone) {
                 badge = 'Done';
                 badgeColor = 'bg-green-500/20 text-green-400';
-              } else if (assignedLoad.theory > 0 || assignedLoad.practical > 0) {
+              } else if (subjAssigned.theory > 0 || subjAssigned.practical > 0) {
                 badge = 'Partial';
                 badgeColor = 'bg-yellow-500/20 text-yellow-400';
               }
 
+              // 3. Render the item
               return (
                 <ListItem
                   key={subject.id}
@@ -321,6 +339,8 @@ export default function PlotPage() {
                 />
               );
             })}
+            {/* --- (End of Fix) --- */}
+
           </div>
         )}
       </Column>
@@ -334,13 +354,13 @@ export default function PlotPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-400">Theory Load:</span>
-                  <span className={`font-medium ${assignedLoad.theory >= totalLoad.theory ? 'text-green-400' : 'text-white'}`}>
+                  <span className={`font-medium ${totalLoad.theory > 0 && assignedLoad.theory >= totalLoad.theory ? 'text-green-400' : 'text-white'}`}>
                     {assignedLoad.theory} / {totalLoad.theory}h
                   </span>
                 </div>
                  <div className="flex justify-between">
                   <span className="text-gray-400">Practical Load:</span>
-                  <span className={`font-medium ${assignedLoad.practical >= totalLoad.practical ? 'text-green-400' : 'text-white'}`}>
+                  <span className={`font-medium ${totalLoad.practical > 0 && assignedLoad.practical >= totalLoad.practical ? 'text-green-400' : 'text-white'}`}>
                     {assignedLoad.practical} / {totalLoad.practical}h
                   </span>
                 </div>
@@ -354,16 +374,18 @@ export default function PlotPage() {
               </div>
             )}
             
-            {eligibleFaculty.map(faculty => (
-              <ListItem
-                key={faculty.id}
-                title={faculty.name}
-                subtitle={`${faculty.designation} (${faculty.initials})`}
-                onClick={() => handleSelectFaculty(faculty)}
-                isSelected={selectedFaculty?.id === faculty.id}
-                badge={`${faculty.maxWorkload - faculty.currentWorkload}h Left`}
-              />
-            ))}
+            <div className="max-h-[60vh] overflow-y-auto space-y-2">
+              {eligibleFaculty.map(faculty => (
+                <ListItem
+                  key={faculty.id}
+                  title={faculty.name}
+                  subtitle={`${faculty.designation} (${faculty.initials})`}
+                  onClick={() => handleSelectFaculty(faculty)}
+                  isSelected={selectedFaculty?.id === faculty.id}
+                  badge={`${faculty.maxWorkload - faculty.currentWorkload}h Left`}
+                />
+              ))}
+            </div>
           </Column>
         )}
       </AnimatePresence>
@@ -386,14 +408,14 @@ export default function PlotPage() {
               {/* Toggle Theory/Practical */}
               <div className="flex rounded-lg bg-dark-800 p-1 mb-4">
                 <button 
-                  className={`flex-1 p-2 rounded ${assignmentType === 'THEORY' ? 'bg-primary-500 text-white' : 'text-gray-400'}`}
+                  className={`flex-1 p-2 rounded ${assignmentType === 'THEORY' ? 'bg-primary-500 text-white' : 'text-gray-400'} disabled:opacity-50`}
                   onClick={() => setAssignmentType('THEORY')}
                   disabled={selectedSubject.theoryHours === 0}
                 >
                   Theory ({selectedSubject.theoryHours}h)
                 </button>
                 <button 
-                  className={`flex-1 p-2 rounded ${assignmentType === 'PRACTICAL' ? 'bg-primary-500 text-white' : 'text-gray-400'}`}
+                  className={`flex-1 p-2 rounded ${assignmentType === 'PRACTICAL' ? 'bg-primary-500 text-white' : 'text-gray-400'} disabled:opacity-50`}
                   onClick={() => setAssignmentType('PRACTICAL')}
                   disabled={selectedSubject.practicalHours === 0}
                 >
@@ -406,11 +428,13 @@ export default function PlotPage() {
                 {assignmentType === 'THEORY' ? (
                   // --- THEORY ASSIGNMENT ---
                   divisionsForSubject.map(div => {
-                    const isAllocated = allocations.some(a => 
+                    const existingAlloc = allocations.find(a => 
                       a.subjectId === selectedSubject.id && 
                       a.type === 'THEORY' && 
                       a.divisionId === div.id
                     );
+                    const isAllocated = !!existingAlloc;
+                    
                     return (
                       <div key={div.id} className="flex items-center justify-between p-3 bg-dark-800 rounded-lg">
                         <label 
@@ -420,9 +444,9 @@ export default function PlotPage() {
                           Division {div.name}
                         </label>
                         {isAllocated ? (
-                          <span className="text-xs text-green-400 font-medium">
-                            Mapped ({faculty.find(f => f.id === allocations.find(a => a.divisionId === div.id && a.subjectId === selectedSubject.id)?.facultyId)?.initials})
-                          </span>
+                          <button onClick={() => handleUnmap(existingAlloc)} className="text-xs text-red-400 font-medium flex items-center gap-1">
+                            ({faculty.find(f => f.id === existingAlloc.facultyId)?.initials}) <X className="w-3 h-3"/>
+                          </button>
                         ) : (
                           <input 
                             id={`div-${div.id}`}
@@ -437,30 +461,33 @@ export default function PlotPage() {
                   })
                 ) : (
                   // --- PRACTICAL ASSIGNMENT ---
-                  divisionsForSubject.map(div => (
-                    <div key={div.id}>
-                      <h4 className="text-sm font-semibold text-primary-400 mb-2">Division {div.name}</h4>
-                      <div className="space-y-2 pl-4">
-                        {getUnassignedBatches(div).length === 0 && (
-                          <p className="text-xs text-gray-500">All batches mapped.</p>
-                        )}
-                        {getUnassignedBatches(div).map(batch => (
-                          <div key={batch.id} className="flex items-center justify-between p-3 bg-dark-800 rounded-lg">
-                            <label htmlFor={`batch-${batch.id}`} className="font-medium text-white cursor-pointer">
-                              Batch {batch.name}
-                            </label>
-                            <input 
-                              id={`batch-${batch.id}`}
-                              type="checkbox"
-                              checked={selectedBatches.has(batch.id)}
-                              onChange={() => toggleBatch(batch.id)}
-                              className="w-5 h-5 text-primary-500 bg-dark-900 border-gray-600 rounded focus:ring-primary-500"
-                            />
-                          </div>
-                        ))}
+                  divisionsForSubject.map(div => {
+                    const unassignedBatches = getUnassignedBatches(div);
+                    return (
+                      <div key={div.id}>
+                        <h4 className="text-sm font-semibold text-primary-400 mb-2">Division {div.name}</h4>
+                        <div className="space-y-2 pl-4">
+                          {unassignedBatches.length === 0 && (
+                            <p className="text-xs text-gray-500">All batches for this div are mapped.</p>
+                          )}
+                          {unassignedBatches.map(batch => (
+                            <div key={batch.id} className="flex items-center justify-between p-3 bg-dark-800 rounded-lg">
+                              <label htmlFor={`batch-${batch.id}`} className="font-medium text-white cursor-pointer">
+                                Batch {batch.name}
+                              </label>
+                              <input 
+                                id={`batch-${batch.id}`}
+                                type="checkbox"
+                                checked={selectedBatches.has(batch.id)}
+                                onChange={() => toggleBatch(batch.id)}
+                                className="w-5 h-5 text-primary-500 bg-dark-900 border-gray-600 rounded focus:ring-primary-500"
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
@@ -473,19 +500,22 @@ export default function PlotPage() {
               </button>
             </div>
 
-            {/* --- Display Current Allocations --- */}
-            <div className="pt-6 mt-6 border-t border-white/10 space-y-2">
-              <h4 className="text-lg text-white font-semibold mb-2">Current Mappings</h4>
+            {/* --- Display Current Allocations for this Faculty --- */}
+            <div className="pt-6 mt-6 border-t border-white/10 space-y-2 max-h-48 overflow-y-auto">
+              <h4 className="text-lg text-white font-semibold mb-2">
+                {selectedFaculty.initials}'s Mappings
+              </h4>
               {allocations
-                .filter(a => a.subjectId === selectedSubject.id && a.facultyId === selectedFaculty.id)
+                .filter(a => a.facultyId === selectedFaculty.id)
                 .map(alloc => {
-                  const divName = divisions.find(d => d.id === alloc.divisionId)?.name;
-                  const batchName = divisions.flatMap(d => d.batches).find(b => b.id === alloc.batchId)?.name;
+                  const div = divisions.find(d => d.id === alloc.divisionId);
+                  const batch = div?.batches.find(b => b.id === alloc.batchId);
+                  const subject = subjects.find(s => s.id === alloc.subjectId);
                   return (
                     <div key={alloc.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
                       <div>
                         <span className="text-white font-medium">
-                          {alloc.type === 'THEORY' ? `Div ${divName} (Theory)` : `Batch ${batchName} (Lab)`}
+                          {subject?.code}: {alloc.type === 'THEORY' ? `Div ${div?.name}` : `Batch ${batch?.name}`}
                         </span>
                         <span className="text-gray-400 text-sm"> — {alloc.hours}h</span>
                       </div>
